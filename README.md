@@ -12,6 +12,8 @@
 [![UI](https://img.shields.io/badge/SwiftUI-Liquid%20Glass-A58BFF?style=flat-square)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-34D399?style=flat-square)](./LICENSE)
 
+**🇨🇳 简体中文** · [🇯🇵 日本語](./README.ja.md) · [🇺🇸 English](./README.en.md)
+
 </div>
 
 ---
