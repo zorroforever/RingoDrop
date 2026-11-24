@@ -2020,6 +2020,8 @@ struct ContentView: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .background(
                 Capsule(style: .continuous)
                     .fill(
@@ -2167,33 +2169,35 @@ struct ContentView: View {
             }
 
             // Sub-bar: Result Region Filter & Single-Country Delisted Download Mode Picker
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 HStack(spacing: 5) {
                     filterTabPill(title: "\(lang.t("全部", "すべて", "All")) (\(vm.searchResults.count))", tag: "ALL")
                     filterTabPill(title: StoreRegion.cn.cuteLabel(lang), tag: "CN")
                     filterTabPill(title: StoreRegion.jp.cuteLabel(lang), tag: "JP")
                     filterTabPill(title: StoreRegion.us.cuteLabel(lang), tag: "US")
-                    filterTabPill(title: lang.t("🔮 已下架/跨区", "🔮 配信終了/越境", "🔮 Delisted"), tag: "DELISTED")
+                    filterTabPill(title: lang.t("🔮 已下架", "🔮 配信終了", "🔮 Delisted"), tag: "DELISTED")
                 }
 
                 Spacer()
 
                 Toggle(
                     lang.t(
-                        "单国搜索自动开启「下架 App 数字 ID 雷达」",
-                        "単一国検索時に「配信終了 App ID レーダー」を自動有効化",
-                        "Auto-enable Delisted App ID Radar"
+                        "下架 ID 雷达",
+                        "配信終了 ID レーダー",
+                        "Delisted ID Radar"
                     ),
                     isOn: $vm.enableDelistedRadar
                 )
                 .font(.system(size: 11.5))
                 .foregroundColor(.white.opacity(0.82))
                 .toggleStyle(.checkbox)
+                .fixedSize(horizontal: true, vertical: false)
 
                 HStack(spacing: 6) {
-                    Text(lang.t("下载策略:", "取得モード:", "Mode:"))
+                    Text(lang.t("策略:", "モード:", "Mode:"))
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundColor(.white.opacity(0.70))
+                        .fixedSize(horizontal: true, vertical: false)
 
                     Picker("", selection: $vm.downloadStrategy) {
                         ForEach(DelistedDownloadStrategy.allCases) { mode in
@@ -2201,7 +2205,7 @@ struct ContentView: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 255)
+                    .frame(width: 245)
                     .controlSize(.small)
                 }
             }
@@ -2218,6 +2222,8 @@ struct ContentView: View {
         } label: {
             Text(title)
                 .font(.system(size: 11.5, weight: isSelected ? .bold : .medium))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
@@ -2548,7 +2554,7 @@ struct AppLiquidGlassRow: View {
                 )
                 .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     // Row 1: Full-width App Name (with hover trigger for floating detail card)
                     HStack(spacing: 6) {
                         Text(app.trackName)
@@ -2562,8 +2568,8 @@ struct AppLiquidGlassRow: View {
                             .foregroundColor(.white.opacity(isHoveringTitle ? 0.95 : 0.42))
                     }
 
-                    // Row 2: 3-Country Storefront Badges + Core Identifiers
-                    HStack(spacing: 7) {
+                    // Row 2: 3-Country Storefront Badges ONLY (so long versions like v158.0.8127.86 never collide with ID/BundleID)
+                    HStack(spacing: 6) {
                         ForEach(StoreRegion.allCases) { reg in
                             if let info = app.listings[reg] {
                                 storefrontBadge(
@@ -2587,7 +2593,10 @@ struct AppLiquidGlassRow: View {
                                 }
                             }
                         }
+                    }
 
+                    // Row 3: App ID + Bundle ID + Package Size + Note
+                    HStack(spacing: 10) {
                         Label("ID: \(String(app.trackId))", systemImage: "number")
                             .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                             .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.86))
@@ -2611,15 +2620,17 @@ struct AppLiquidGlassRow: View {
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                         }
-                    }
 
-                    if let note = app.presetNote {
-                        Text(note)
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundColor(Color(red: 0.62, green: 0.90, blue: 1.0))
-                            .lineLimit(1)
+                        if let note = app.presetNote {
+                            Text("· \(note)")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Color(red: 0.62, green: 0.90, blue: 1.0))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     GeometryReader { rowGeo in
                         Color.clear
@@ -2668,6 +2679,8 @@ struct AppLiquidGlassRow: View {
                             Text(selectedVersion.isEmpty ? lang.t("选版本", "版選択", "Versions") : "vID:\(selectedVersion.suffix(5))")
                                 .font(.system(size: 12, weight: .medium))
                         }
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: false))
 
@@ -2680,6 +2693,8 @@ struct AppLiquidGlassRow: View {
                                 Text(lang.t("免费领券", "無料取得", "Claim"))
                                     .font(.system(size: 12, weight: .medium))
                             }
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                         }
                         .buttonStyle(LiquidGlassButtonStyle(prominent: false))
                         .disabled(taskState.isRunning)
@@ -2701,10 +2716,13 @@ struct AppLiquidGlassRow: View {
                             }
                         }
                         .font(.system(size: 13, weight: .bold))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: true, tint: sakuraPink))
                     .disabled(taskState.isRunning)
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             if showVersionsPopover {
