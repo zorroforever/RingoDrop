@@ -120,6 +120,7 @@ struct StoreAppItem: Identifiable, Hashable {
 
     // Per-region listings (CN / JP / US)
     var listings: [StoreRegion: RegionListingInfo] = [:]
+    var hasCheckedRegions: Bool = false
 
     var fallbackVersion: String?
     var isDelistedOrRecovered: Bool = false
@@ -378,6 +379,12 @@ final class RingoDropViewModel: ObservableObject {
     @Published var loadingVersionsFor: Set<Int64> = []
     @Published var selectedVersionForApp: [Int64: String] = [:]
 
+    // Purchased pagination state
+    @Published var isBrowsingPurchases: Bool = false
+    @Published var purchasedCurrentPage: Int = 1
+    @Published var purchasedTotalCount: Int = 0
+    @Published var isLoadingMorePurchases: Bool = false
+
     // Console log
     @Published var logs: [String] = []
     @Published var showConsole: Bool = false
@@ -612,34 +619,72 @@ final class RingoDropViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Hydrate Icons & Multi-Region Listings (CN / JP / US)
+    // MARK: - Hydrate Icons & Multi-Region Listings (CN / JP / US) Across ALL Chunks
 
-    func hydrateIconsAndListings() async {
-        let allIDs = searchResults.map { String($0.trackId) }
-        guard !allIDs.isEmpty else { return }
-        let chunk = allIDs.prefix(40).joined(separator: ",")
+    func hydrateIconsAndListings(onlyUnchecked: Bool = false) async {
+        let targetIDs: [String] = searchResults
+            .filter { !onlyUnchecked || !$0.hasCheckedRegions }
+            .map { String($0.trackId) }
+        guard !targetIDs.isEmpty else { return }
 
-        for reg in StoreRegion.allCases {
-            guard let url = URL(string: "https://itunes.apple.com/lookup?id=\(chunk)&country=\(reg.rawValue)") else { continue }
-            do {
-                let data = try await fetchData(from: url)
-                let decoded = try JSONDecoder().decode(ITunesSearchResponse.self, from: data)
-                var map: [Int64: ITunesRawItem] = [:]
-                for item in decoded.results {
-                    if let id = item.trackId { map[id] = item }
-                }
-                for idx in searchResults.indices {
-                    let tid = searchResults[idx].trackId
-                    if let raw = map[tid] {
-                        if searchResults[idx].artworkUrl512.isEmpty {
-                            searchResults[idx].artworkUrl512 = raw.artworkUrl512 ?? raw.artworkUrl100 ?? ""
+        // Split into chunks of 40 IDs (Apple Lookup API limit per request)
+        let batchSize = 40
+        var chunks: [[String]] = []
+        var idx = 0
+        while idx < targetIDs.count {
+            let end = min(idx + batchSize, targetIDs.count)
+            chunks.append(Array(targetIDs[idx..<end]))
+            idx = end
+        }
+
+        for chunk in chunks {
+            let joinedIDs = chunk.joined(separator: ",")
+            let chunkIDSet = Set(chunk.compactMap { Int64($0) })
+
+            // Fetch CN, JP, US concurrently for this chunk
+            var regionMaps: [StoreRegion: [Int64: ITunesRawItem]] = [:]
+            await withTaskGroup(of: (StoreRegion, [Int64: ITunesRawItem]).self) { group in
+                for reg in StoreRegion.allCases {
+                    group.addTask {
+                        guard let url = URL(string: "https://itunes.apple.com/lookup?id=\(joinedIDs)&country=\(reg.rawValue)") else {
+                            return (reg, [:])
                         }
-                        if searchResults[idx].fileSizeBytes == nil {
-                            searchResults[idx].fileSizeBytes = raw.fileSizeBytes
+                        do {
+                            let data = try await self.fetchData(from: url)
+                            let decoded = try JSONDecoder().decode(ITunesSearchResponse.self, from: data)
+                            var map: [Int64: ITunesRawItem] = [:]
+                            for item in decoded.results {
+                                if let id = item.trackId { map[id] = item }
+                            }
+                            return (reg, map)
+                        } catch {
+                            return (reg, [:])
+                        }
+                    }
+                }
+                for await (reg, map) in group {
+                    regionMaps[reg] = map
+                }
+            }
+
+            // Apply hydrated metadata to searchResults
+            for itemIdx in searchResults.indices {
+                let tid = searchResults[itemIdx].trackId
+                guard chunkIDSet.contains(tid) else { continue }
+                for reg in StoreRegion.allCases {
+                    if let raw = regionMaps[reg]?[tid] {
+                        if searchResults[itemIdx].artworkUrl512.isEmpty {
+                            searchResults[itemIdx].artworkUrl512 = raw.artworkUrl512 ?? raw.artworkUrl100 ?? ""
+                        }
+                        if searchResults[itemIdx].fileSizeBytes == nil {
+                            searchResults[itemIdx].fileSizeBytes = raw.fileSizeBytes
+                        }
+                        if searchResults[itemIdx].sellerName == "账号历史已购", let seller = raw.sellerName, !seller.isEmpty {
+                            searchResults[itemIdx].sellerName = seller
                         }
                         let priceVal = raw.price ?? 0
                         let priceStr = raw.formattedPrice ?? (priceVal == 0 ? reg.freeWord : "\(priceVal)")
-                        searchResults[idx].listings[reg] = RegionListingInfo(
+                        searchResults[itemIdx].listings[reg] = RegionListingInfo(
                             region: reg,
                             version: raw.version ?? "在架",
                             priceText: priceStr,
@@ -647,33 +692,46 @@ final class RingoDropViewModel: ObservableObject {
                         )
                     }
                 }
-            } catch {
-                // Ignore individual region hydration error
+                searchResults[itemIdx].hasCheckedRegions = true
             }
         }
     }
 
-    // MARK: - Load Account's Purchased Apps (ipatool list-purchases + Presets)
+    // MARK: - Load Account's Purchased Apps (ipatool list-purchases + Pagination + Full Chunk Hydration)
 
-    func loadPurchasedApps() async {
-        isSearching = true
-        appendLog("📦 正在拉取当前账号 (\(activeAccount.email.isEmpty ? "默认" : activeAccount.email)) 的已购应用列表...")
+    func loadPurchasedApps(page: Int = 1, append: Bool = false) async {
+        if append {
+            isLoadingMorePurchases = true
+        } else {
+            isSearching = true
+            isBrowsingPurchases = true
+            purchasedCurrentPage = 1
+        }
+
+        appendLog("📦 正在拉取当前账号 (\(activeAccount.email.isEmpty ? "默认" : activeAccount.email)) 的已购应用列表 (第 \(page) 页)...")
         let res = await runIpatool(args: [
             "list-purchases",
             "-l", "100",
+            "-p", String(page),
             "--format", "json",
             "--non-interactive"
         ])
 
-        var items: [StoreAppItem] = kPresetDelistedApps
+        var items: [StoreAppItem] = append ? searchResults : kPresetDelistedApps
         var seen: Set<Int64> = Set(items.map(\.trackId))
 
         if let data = res.stdout.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let apps = json["apps"] as? [[String: Any]]
         {
+            if let total = (json["totalCount"] as? Int) ?? (json["totalCount"] as? NSNumber)?.intValue {
+                purchasedTotalCount = total
+            }
+            purchasedCurrentPage = page
+
             for appDict in apps {
                 let rawID = (appDict["id"] as? Int64)
+                    ?? (appDict["id"] as? NSNumber)?.int64Value
                     ?? (appDict["id"] as? Int).map(Int64.init)
                     ?? 0
                 guard rawID > 0, !seen.contains(rawID) else { continue }
@@ -691,26 +749,30 @@ final class RingoDropViewModel: ObservableObject {
                         primaryGenreName: "已购",
                         fileSizeBytes: nil,
                         listings: [:],
+                        hasCheckedRegions: false,
                         fallbackVersion: ver,
-                        isDelistedOrRecovered: true,
-                        presetNote: "账号已购项目 · 即使商店已下架也可通过 -i \(rawID) 直连下载"
+                        isDelistedOrRecovered: false,
+                        presetNote: "账号已购项目 (购买时版本 v\(ver)) · 支持一键直连下载最新 IPA"
                     )
                 )
             }
-            appendLog("✅ 已加载 \(apps.count) 款已购应用（并自动补全中/日/美三区状态）")
+            appendLog("✅ 已加载第 \(page) 页共 \(apps.count) 款已购应用（总计 \(items.count) / \(max(purchasedTotalCount, items.count)) 款），正在分批同步全量图标与中/日/美三区上架状态...")
         } else {
             let errMsg = Self.extractErrorMessage(from: res.stdout + "\n" + res.stderr)
             appendLog("⚠️ 拉取已购列表: \(errMsg)")
         }
 
         searchResults = items
-        await hydrateIconsAndListings()
         isSearching = false
+        isLoadingMorePurchases = false
+        await hydrateIconsAndListings(onlyUnchecked: append)
+        appendLog("✨ 已完成全部 \(searchResults.count) 款已购应用的图标与三区在架状态核验")
     }
 
     // MARK: - Multi-Country Parallel Search + Single-Country Delisted Radar
 
     func performSearch() async {
+        isBrowsingPurchases = false
         let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             searchResults = kPresetDelistedApps
@@ -1973,6 +2035,31 @@ struct ContentView: View {
                 ForEach(vm.filteredResults) { app in
                     AppLiquidGlassRow(app: app, vm: vm)
                 }
+
+                if vm.isBrowsingPurchases && vm.purchasedTotalCount > vm.searchResults.count - kPresetDelistedApps.count {
+                    HStack {
+                        Spacer()
+                        Button {
+                            Task {
+                                await vm.loadPurchasedApps(page: vm.purchasedCurrentPage + 1, append: true)
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if vm.isLoadingMorePurchases {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: "arrow.down.circle")
+                                }
+                                Text("加载下一页已购应用 (当前已加载 \(vm.searchResults.count) 款 / 账号共 \(vm.purchasedTotalCount) 款已购)")
+                                    .font(.system(size: 12.5, weight: .semibold))
+                            }
+                        }
+                        .buttonStyle(LiquidGlassButtonStyle(prominent: true, tint: sakuraPink))
+                        .disabled(vm.isLoadingMorePurchases)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                }
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 2)
@@ -2132,11 +2219,19 @@ struct AppLiquidGlassRow: View {
                                     color: reg.accentColor
                                 )
                             } else if reg == .cn {
-                                storefrontBadge(
-                                    flag: "🇨🇳 国区已下架",
-                                    detail: "可穿透直下",
-                                    color: .orange
-                                )
+                                if app.hasCheckedRegions {
+                                    storefrontBadge(
+                                        flag: "🇨🇳 国区已下架",
+                                        detail: "可穿透直下",
+                                        color: .orange
+                                    )
+                                } else {
+                                    storefrontBadge(
+                                        flag: "⏳ 正在核验在架状态",
+                                        detail: "v\(app.fallbackVersion ?? "已购")",
+                                        color: .cyan
+                                    )
+                                }
                             }
                         }
                     }
