@@ -6,14 +6,21 @@ DISPLAY_NAME="RingoDrop"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
+ICONSET_DIR="${BUILD_DIR}/AppIcon.iconset"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 
 echo "==> 🍎 正在编译 RingoDrop (りんご雫) 原生 SwiftUI Liquid Glass 客户端..."
-rm -rf "${APP_BUNDLE}"
+rm -rf "${APP_BUNDLE}" "${ICONSET_DIR}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
+
+echo "==> 🎨 正在生成 RingoDrop (りんご雫) Liquid Glass 应用图标 (AppIcon.icns)..."
+swift "${SCRIPT_DIR}/generate_icon.swift" "${ICONSET_DIR}"
+iconutil -c icns "${ICONSET_DIR}" -o "${RESOURCES_DIR}/AppIcon.icns"
+cp "${ICONSET_DIR}/icon_512x512@2x.png" "${RESOURCES_DIR}/AppIcon.png"
+rm -rf "${ICONSET_DIR}"
 
 swiftc -parse-as-library -O \
   -framework SwiftUI \
@@ -37,6 +44,10 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
     <string>${DISPLAY_NAME}</string>
     <key>CFBundleDisplayName</key>
     <string>RingoDrop りんご雫</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -57,13 +68,16 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
 EOF
 
 chmod +x "${MACOS_DIR}/${APP_NAME}"
+touch "${APP_BUNDLE}"
 echo "✅ 编译完成: ${APP_BUNDLE}"
 
 if [[ "${1:-}" != "--no-install" ]]; then
   if [[ -d "/Applications" && -w "/Applications" ]]; then
     rm -rf "/Applications/IPAGlass.app" "/Applications/${APP_NAME}.app"
     cp -R "${APP_BUNDLE}" "/Applications/${APP_NAME}.app"
-    echo "✅ 已安装至 /Applications/${APP_NAME}.app (并已清理旧版 IPAGlass.app)"
+    touch "/Applications/${APP_NAME}.app"
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_NAME}.app" >/dev/null 2>&1 || true
+    echo "✅ 已安装至 /Applications/${APP_NAME}.app"
     open "/Applications/${APP_NAME}.app"
   else
     open "${APP_BUNDLE}"

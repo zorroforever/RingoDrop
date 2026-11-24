@@ -1,0 +1,59 @@
+name: Build & Publish macOS Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build RingoDrop.app (.dmg & .zip)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build RingoDrop.app bundle & AppIcon.icns
+        run: |
+          chmod +x scripts/build_app.sh
+          ./scripts/build_app.sh --no-install
+
+      - name: Package macOS .zip and .dmg
+        run: |
+          VERSION="${GITHUB_REF_NAME:-v1.0.0}"
+          mkdir -p dist dmg_root
+          ditto -c -k --sequesterRsrc --keepParent build/RingoDrop.app "dist/RingoDrop-${VERSION}-macOS.zip"
+          cp -R build/RingoDrop.app dmg_root/
+          ln -s /Applications dmg_root/Applications
+          hdiutil create -volname "RingoDrop りんご雫" -srcfolder dmg_root -ov -format UDZO "dist/RingoDrop-${VERSION}-macOS.dmg"
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "🍎💧 RingoDrop (りんご雫) ${{ github.ref_name }}"
+          body: |
+            ## 🍎💧 RingoDrop（りんご雫 / 林檎雫）${{ github.ref_name }}
+
+            **macOS 原生 SwiftUI Liquid Glass 风格的 App Store `.ipa` 多国联合搜索、三国账号切换与已下架应用提取工具**
+
+            ### ✨ 核心亮点
+            - **💧 原生 Liquid Glass 视觉**：包含全新设计的日系「りんご雫」晶莹苹果露珠高清图标（`AppIcon.icns`）与极光毛玻璃界面。
+            - **🇨🇳 · 🇯🇵 · 🇺🇸 中/日/美 三国账号舱**：支持 macOS 原生钥匙串存储与各区 2FA 信任 Cookie 快照，顶栏一键切号。
+            - **🔍 多国家自由组合联合搜索**：可任意勾选 1~3 个国家并发检索，同屏对比各国上架状态、价格与最新版本号。
+            - **🔮 单国家已下架 App 穿透下载**：支持已购下架穿透直下（`-i <AppID>`）、未购免费应用自动领券入库（`--purchase`）及跨区下架数字 ID 自动反查。
+            - **🕰️ 历史版本降级 & 灰度最新版直取**：支持展开 `externalVersionIdentifiers` 列表自由选择任意历史或最新灰度版本。
+
+            ### 📦 安装说明
+            1. 先通过 Homebrew 安装底层依赖：`brew install ipatool`
+            2. 下载下方 **`RingoDrop-${{ github.ref_name }}-macOS.dmg`**（或 `.zip`），将 **`RingoDrop.app`** 拖入 `/Applications`（应用程序）即可运行。
+            *(首次打开若提示未签名应用，可在终端执行 `xattr -cr /Applications/RingoDrop.app` 或在「系统设置 -> 隐私与安全性」中点击仍要打开)*
+          files: |
+            dist/RingoDrop-*.dmg
+            dist/RingoDrop-*.zip
+          draft: false
+          prerelease: false

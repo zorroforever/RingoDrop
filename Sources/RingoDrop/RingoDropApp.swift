@@ -2671,6 +2671,15 @@ struct ProxyAndSettingsSheet: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let iconImage = NSImage(contentsOf: iconURL)
+        {
+            NSApp.applicationIconImage = iconImage
+        } else if let pngURL = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+                  let iconImage = NSImage(contentsOf: pngURL)
+        {
+            NSApp.applicationIconImage = iconImage
+        }
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.async {
             for window in NSApp.windows {
