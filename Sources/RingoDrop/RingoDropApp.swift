@@ -1,6 +1,6 @@
 //
 //  RingoDropApp.swift
-//  RingoDrop (りんご雫) — Native macOS SwiftUI Liquid Glass App Store IPA Downloader
+//  RingoDrop (りんご雫) v1.0.1 — Native macOS SwiftUI Liquid Glass App Store IPA Downloader
 //
 //  https://github.com/zorroforever/RingoDrop
 //  License: MIT
@@ -11,6 +11,72 @@ import Combine
 import Foundation
 import Security
 import SwiftUI
+
+let kRingoDropVersion = "v1.0.1"
+
+// MARK: - Multi-Language Support (System Default + Manual Switch: 中文 / 日本語 / English)
+
+enum AppLanguageSetting: String, CaseIterable, Identifiable {
+    case system = "SYSTEM"
+    case zh = "zh"
+    case ja = "ja"
+    case en = "en"
+
+    var id: String { rawValue }
+
+    var menuTitle: String {
+        switch self {
+        case .system: return "🌐 跟随系统 / システム / System"
+        case .zh: return "🇨🇳 简体中文"
+        case .ja: return "🇯🇵 日本語"
+        case .en: return "🇺🇸 English"
+        }
+    }
+
+    var pillTitle: String {
+        switch self {
+        case .system:
+            switch resolved {
+            case .zh: return "🌐 系统 (中文)"
+            case .ja: return "🌐 自動 (日本語)"
+            case .en: return "🌐 System (EN)"
+            }
+        case .zh: return "🇨🇳 中文"
+        case .ja: return "🇯🇵 日本語"
+        case .en: return "🇺🇸 EN"
+        }
+    }
+
+    var resolved: ResolvedLanguage {
+        switch self {
+        case .zh: return .zh
+        case .ja: return .ja
+        case .en: return .en
+        case .system:
+            for pref in Locale.preferredLanguages {
+                let lower = pref.lowercased()
+                if lower.hasPrefix("zh") { return .zh }
+                if lower.hasPrefix("ja") { return .ja }
+                if lower.hasPrefix("en") { return .en }
+            }
+            return .zh
+        }
+    }
+}
+
+enum ResolvedLanguage {
+    case zh
+    case ja
+    case en
+
+    func t(_ zh: String, _ ja: String, _ en: String) -> String {
+        switch self {
+        case .zh: return zh
+        case .ja: return ja
+        case .en: return en
+        }
+    }
+}
 
 // MARK: - Storefront Region Definition (CN 🇨🇳 / JP 🇯🇵 / US 🇺🇸)
 
@@ -29,27 +95,23 @@ enum StoreRegion: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    var shortName: String {
+    func shortName(_ lang: ResolvedLanguage) -> String {
         switch self {
-        case .cn: return "国区"
-        case .jp: return "日区"
-        case .us: return "美区"
+        case .cn: return lang.t("国区", "中国", "CN")
+        case .jp: return lang.t("日区", "日本", "JP")
+        case .us: return lang.t("美区", "米国", "US")
         }
     }
 
-    var cuteLabel: String {
-        switch self {
-        case .cn: return "🇨🇳 国区"
-        case .jp: return "🇯🇵 日区"
-        case .us: return "🇺🇸 美区"
-        }
+    func cuteLabel(_ lang: ResolvedLanguage) -> String {
+        "\(flag) \(shortName(lang))"
     }
 
-    var jpSubtitle: String {
+    func storeSubtitle(_ lang: ResolvedLanguage) -> String {
         switch self {
-        case .cn: return "中国本土ストア"
-        case .jp: return "日本ストア"
-        case .us: return "米国ストア"
+        case .cn: return lang.t("中国大陆商店", "中国本土ストア", "China Mainland Store")
+        case .jp: return lang.t("日本区商店", "日本ストア", "Japan Store")
+        case .us: return lang.t("美国区商店", "米国ストア", "United States Store")
         }
     }
 
@@ -79,22 +141,34 @@ enum DelistedDownloadStrategy: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(_ lang: ResolvedLanguage) -> String {
         switch self {
         case .smartAuto:
-            return "✨ 智能模式 (自动领券 + 已购穿透回退)"
+            return lang.t(
+                "✨ 智能模式 (自动领券 + 已购穿透回退)",
+                "✨ スマート (無料取得 + 購入済直結フォールバック)",
+                "✨ Smart Auto (Auto Claim + Purchased Fallback)"
+            )
         case .purchasedDirect:
-            return "🔓 已购下架直下 (仅传 -i 数字ID 绕过目录)"
+            return lang.t(
+                "🔓 已购下架直下 (仅传 -i 数字ID 绕过目录)",
+                "🔓 購入済み直結 (-i 数字IDのみでカタログ回避)",
+                "🔓 Purchased Direct (-i Numeric ID Bypass)"
+            )
         case .freeForceClaim:
-            return "🎁 未购免费领券直下 (强制申领免费许可并下载)"
+            return lang.t(
+                "🎁 未购免费领券直下 (强制申领免费许可并下载)",
+                "🎁 未購入無料ライセンス強制取得 & DL",
+                "🎁 Force Claim Free License & Download"
+            )
         }
     }
 
-    var shortBadge: String {
+    func shortBadge(_ lang: ResolvedLanguage) -> String {
         switch self {
-        case .smartAuto: return "智能一键"
-        case .purchasedDirect: return "已购穿透"
-        case .freeForceClaim: return "免费领券"
+        case .smartAuto: return lang.t("智能一键", "スマート", "Smart")
+        case .purchasedDirect: return lang.t("已购穿透", "購入済直結", "Direct ID")
+        case .freeForceClaim: return lang.t("免费领券", "無料取得", "Claim Free")
         }
     }
 }
@@ -131,7 +205,7 @@ struct StoreAppItem: Identifiable, Hashable {
             ?? listings[.jp]?.version
             ?? listings[.us]?.version
             ?? fallbackVersion
-            ?? "最新版"
+            ?? "Latest"
     }
 
     var isFreeInAnyRegion: Bool {
@@ -246,12 +320,12 @@ let kPresetDelistedApps: [StoreAppItem] = [
         bundleId: "com.liguangming.Shadowrocket",
         sellerName: "Shadow Launch Technology Limited",
         artworkUrl512: "",
-        primaryGenreName: "网络工具",
+        primaryGenreName: "Utilities",
         fileSizeBytes: nil,
         listings: [:],
         fallbackVersion: "2.2.x",
         isDelistedOrRecovered: true,
-        presetNote: "国区已下架 / 日美在架 · 纯数字 ID 932747118 支持已购账号穿透直下最新版"
+        presetNote: "ID: 932747118 · 支持已购账号绕过目录穿透直下最新版 / Direct numeric ID download"
     ),
     StoreAppItem(
         trackId: 686449807,
@@ -259,12 +333,12 @@ let kPresetDelistedApps: [StoreAppItem] = [
         bundleId: "ph.telegra.Telegraph",
         sellerName: "Telegram FZ-LLC",
         artworkUrl512: "",
-        primaryGenreName: "社交沟通",
+        primaryGenreName: "Social",
         fileSizeBytes: nil,
         listings: [:],
-        fallbackVersion: "最新版",
+        fallbackVersion: "Latest",
         isDelistedOrRecovered: true,
-        presetNote: "国区已下架 / 日美免费 · 国区老号已购直下，或日美账号一键免费领券下载"
+        presetNote: "ID: 686449807 · 已购直下，或日/美区账号一键免费领券下载 / Free in JP & US"
     ),
     StoreAppItem(
         trackId: 1443988620,
@@ -272,12 +346,12 @@ let kPresetDelistedApps: [StoreAppItem] = [
         bundleId: "com.crossutility.quantumult-x",
         sellerName: "Cross Utility Limited",
         artworkUrl512: "",
-        primaryGenreName: "网络工具",
+        primaryGenreName: "Utilities",
         fileSizeBytes: nil,
         listings: [:],
-        fallbackVersion: "最新版",
+        fallbackVersion: "Latest",
         isDelistedOrRecovered: true,
-        presetNote: "国区已下架 / 日美在架 · 已购账号通过数字 ID 1443988620 穿透直下"
+        presetNote: "ID: 1443988620 · 已购账号通过数字 ID 穿透直下 / Direct numeric ID download"
     ),
     StoreAppItem(
         trackId: 1442620678,
@@ -285,12 +359,12 @@ let kPresetDelistedApps: [StoreAppItem] = [
         bundleId: "com.nssurge.inc.surge-ios",
         sellerName: "Surge Networks Limited",
         artworkUrl512: "",
-        primaryGenreName: "网络工具",
+        primaryGenreName: "Utilities",
         fileSizeBytes: nil,
         listings: [:],
-        fallbackVersion: "最新版",
+        fallbackVersion: "Latest",
         isDelistedOrRecovered: true,
-        presetNote: "国区已下架 / 日美免费本体 · 支持一键免费领券入库并下载 IPA"
+        presetNote: "ID: 1442620678 · 日/美免费本体 · 支持一键免费领券并下载 IPA / Free base app"
     ),
     StoreAppItem(
         trackId: 1373567447,
@@ -298,12 +372,12 @@ let kPresetDelistedApps: [StoreAppItem] = [
         bundleId: "com.ruikq.decar",
         sellerName: "Loon Team",
         artworkUrl512: "",
-        primaryGenreName: "网络工具",
+        primaryGenreName: "Utilities",
         fileSizeBytes: nil,
         listings: [:],
-        fallbackVersion: "最新版",
+        fallbackVersion: "Latest",
         isDelistedOrRecovered: true,
-        presetNote: "国区已下架 / 日美在架 · 纯数字 ID 1373567447 支持已购账号直下"
+        presetNote: "ID: 1373567447 · 纯数字 ID 支持已购账号直下 / Direct numeric ID download"
     ),
     StoreAppItem(
         trackId: 1596063349,
@@ -311,12 +385,12 @@ let kPresetDelistedApps: [StoreAppItem] = [
         bundleId: "ws.stash.app.ios",
         sellerName: "Stash Networks",
         artworkUrl512: "",
-        primaryGenreName: "网络工具",
+        primaryGenreName: "Utilities",
         fileSizeBytes: nil,
         listings: [:],
-        fallbackVersion: "最新版",
+        fallbackVersion: "Latest",
         isDelistedOrRecovered: true,
-        presetNote: "国区已下架 / 日美在架 · 纯数字 ID 1596063349 支持已购账号直下"
+        presetNote: "ID: 1596063349 · 纯数字 ID 支持已购账号直下 / Direct numeric ID download"
     )
 ]
 
@@ -324,6 +398,15 @@ let kPresetDelistedApps: [StoreAppItem] = [
 
 @MainActor
 final class RingoDropViewModel: ObservableObject {
+    // Language Setting (System Default + Manual Override)
+    @Published var languageSetting: AppLanguageSetting {
+        didSet { UserDefaults.standard.set(languageSetting.rawValue, forKey: "ringodrop.language") }
+    }
+
+    var lang: ResolvedLanguage {
+        languageSetting.resolved
+    }
+
     // Search & Multi-Country Selection
     @Published var searchQuery: String = ""
     @Published var isSearching: Bool = false
@@ -390,6 +473,7 @@ final class RingoDropViewModel: ObservableObject {
     @Published var showConsole: Bool = false
 
     init() {
+        let savedLangRaw = UserDefaults.standard.string(forKey: "ringodrop.language") ?? "SYSTEM"
         let savedProxyEnabled = UserDefaults.standard.object(forKey: "ringodrop.proxyEnabled") as? Bool ?? true
         let savedProxyURL = UserDefaults.standard.string(forKey: "ringodrop.proxyURL") ?? "http://127.0.0.1:7890"
         let detectedIpatool = Self.detectIpatoolBinary()
@@ -398,6 +482,7 @@ final class RingoDropViewModel: ObservableObject {
         let savedDlDir = UserDefaults.standard.string(forKey: "ringodrop.downloadDir") ?? defaultDlDir
         let savedRegionRaw = UserDefaults.standard.string(forKey: "ringodrop.activeRegion") ?? "CN"
 
+        self.languageSetting = AppLanguageSetting(rawValue: savedLangRaw) ?? .system
         self.proxyEnabled = savedProxyEnabled
         self.proxyURL = savedProxyURL
         self.ipatoolPath = FileManager.default.isExecutableFile(atPath: savedIpatool) ? savedIpatool : detectedIpatool
@@ -405,7 +490,7 @@ final class RingoDropViewModel: ObservableObject {
         self.activeRegionTag = StoreRegion(rawValue: savedRegionRaw) ?? .cn
 
         reloadAccountSlots()
-        appendLog("🍎 RingoDrop (りんご雫) 已启动 | ipatool: \(self.ipatoolPath)")
+        appendLog("🍎 RingoDrop (りんご雫) \(kRingoDropVersion) | ipatool: \(self.ipatoolPath)")
 
         Task {
             await refreshAccountInfo()
@@ -472,7 +557,6 @@ final class RingoDropViewModel: ObservableObject {
         if let pwd = password, !pwd.isEmpty, savePasswordInKeychain {
             RingoKeychain.savePassword(pwd, for: "\(region.rawValue):\(email)")
         }
-        // Snapshot cookies file for 2FA session preservation
         let mainCookies = cookieFilePath(for: nil)
         let regionCookies = cookieFilePath(for: region)
         if FileManager.default.fileExists(atPath: mainCookies) {
@@ -513,19 +597,16 @@ final class RingoDropViewModel: ObservableObject {
             return
         }
 
-        // If already active
         if activeAccount.isLoggedIn && activeAccount.email.lowercased() == slot.email.lowercased() {
             activeRegionTag = region
-            appendLog("✨ 当前已处于 \(region.cuteLabel) 账号 (\(slot.email))")
+            appendLog("✨ \(region.cuteLabel(lang)): \(slot.email)")
             return
         }
 
-        // Check if we have saved password in RingoKeychain for 1-click switch
         if let pwd = RingoKeychain.loadPassword(for: "\(region.rawValue):\(slot.email)"), !pwd.isEmpty {
             isLoggingIn = true
-            appendLog("🔄 正在一键切换至 \(region.cuteLabel) 账号: \(slot.email)...")
+            appendLog("🔄 Switching to \(region.cuteLabel(lang)): \(slot.email)...")
 
-            // Restore that region's 2FA trusted cookie snapshot first
             let mainCookies = cookieFilePath(for: nil)
             let regionCookies = cookieFilePath(for: region)
             if FileManager.default.fileExists(atPath: regionCookies) {
@@ -545,10 +626,10 @@ final class RingoDropViewModel: ObservableObject {
             if res.exitCode == 0 {
                 activeRegionTag = region
                 await refreshAccountInfo(assignToRegion: region)
-                appendLog("✅ 已成功切换至 \(region.cuteLabel) 账号: \(slot.email)")
+                appendLog("✅ Activated \(region.cuteLabel(lang)): \(slot.email)")
                 return
             } else {
-                appendLog("ℹ️ \(region.cuteLabel) 账号需要刷新验证码，已打开登录窗口")
+                appendLog("ℹ️ 2FA required for \(region.cuteLabel(lang)), opening login sheet")
             }
         }
 
@@ -576,7 +657,7 @@ final class RingoDropViewModel: ObservableObject {
         case "US":
             return searchResults.filter { $0.listings[.us] != nil || $0.isDelistedOrRecovered }
         case "DELISTED":
-            return searchResults.filter { $0.listings[.cn] == nil || $0.isDelistedOrRecovered }
+            return searchResults.filter { ($0.hasCheckedRegions && $0.listings[.cn] == nil) || $0.isDelistedOrRecovered }
         default:
             return searchResults
         }
@@ -627,7 +708,6 @@ final class RingoDropViewModel: ObservableObject {
             .map { String($0.trackId) }
         guard !targetIDs.isEmpty else { return }
 
-        // Split into chunks of 40 IDs (Apple Lookup API limit per request)
         let batchSize = 40
         var chunks: [[String]] = []
         var idx = 0
@@ -641,7 +721,6 @@ final class RingoDropViewModel: ObservableObject {
             let joinedIDs = chunk.joined(separator: ",")
             let chunkIDSet = Set(chunk.compactMap { Int64($0) })
 
-            // Fetch CN, JP, US concurrently for this chunk
             var regionMaps: [StoreRegion: [Int64: ITunesRawItem]] = [:]
             await withTaskGroup(of: (StoreRegion, [Int64: ITunesRawItem]).self) { group in
                 for reg in StoreRegion.allCases {
@@ -667,7 +746,6 @@ final class RingoDropViewModel: ObservableObject {
                 }
             }
 
-            // Apply hydrated metadata to searchResults
             for itemIdx in searchResults.indices {
                 let tid = searchResults[itemIdx].trackId
                 guard chunkIDSet.contains(tid) else { continue }
@@ -679,14 +757,14 @@ final class RingoDropViewModel: ObservableObject {
                         if searchResults[itemIdx].fileSizeBytes == nil {
                             searchResults[itemIdx].fileSizeBytes = raw.fileSizeBytes
                         }
-                        if searchResults[itemIdx].sellerName == "账号历史已购", let seller = raw.sellerName, !seller.isEmpty {
+                        if let seller = raw.sellerName, !seller.isEmpty {
                             searchResults[itemIdx].sellerName = seller
                         }
                         let priceVal = raw.price ?? 0
                         let priceStr = raw.formattedPrice ?? (priceVal == 0 ? reg.freeWord : "\(priceVal)")
                         searchResults[itemIdx].listings[reg] = RegionListingInfo(
                             region: reg,
-                            version: raw.version ?? "在架",
+                            version: raw.version ?? "Active",
                             priceText: priceStr,
                             isFree: priceVal == 0
                         )
@@ -708,7 +786,7 @@ final class RingoDropViewModel: ObservableObject {
             purchasedCurrentPage = 1
         }
 
-        appendLog("📦 正在拉取当前账号 (\(activeAccount.email.isEmpty ? "默认" : activeAccount.email)) 的已购应用列表 (第 \(page) 页)...")
+        appendLog("📦 Loading purchased apps (page \(page))...")
         let res = await runIpatool(args: [
             "list-purchases",
             "-l", "100",
@@ -736,37 +814,41 @@ final class RingoDropViewModel: ObservableObject {
                     ?? 0
                 guard rawID > 0, !seen.contains(rawID) else { continue }
                 seen.insert(rawID)
-                let name = (appDict["name"] as? String) ?? "已购应用 #\(rawID)"
+                let name = (appDict["name"] as? String) ?? "App #\(rawID)"
                 let bundle = (appDict["bundleID"] as? String) ?? ""
-                let ver = (appDict["version"] as? String) ?? "已购"
+                let ver = (appDict["version"] as? String) ?? ""
                 items.append(
                     StoreAppItem(
                         trackId: rawID,
                         trackName: name,
                         bundleId: bundle,
-                        sellerName: "账号历史已购",
+                        sellerName: lang.t("账号历史已购", "購入済みアイテム", "Purchased Item"),
                         artworkUrl512: "",
-                        primaryGenreName: "已购",
+                        primaryGenreName: "Purchased",
                         fileSizeBytes: nil,
                         listings: [:],
                         hasCheckedRegions: false,
                         fallbackVersion: ver,
                         isDelistedOrRecovered: false,
-                        presetNote: "账号已购项目 (购买时版本 v\(ver)) · 支持一键直连下载最新 IPA"
+                        presetNote: lang.t(
+                            "账号已购项目 (购买记录 v\(ver)) · 支持一键直连下载最新 IPA",
+                            "購入済み (記録 v\(ver)) · 最新 IPA の直接ダウンロード対応",
+                            "Purchased (record v\(ver)) · Direct latest IPA download supported"
+                        )
                     )
                 )
             }
-            appendLog("✅ 已加载第 \(page) 页共 \(apps.count) 款已购应用（总计 \(items.count) / \(max(purchasedTotalCount, items.count)) 款），正在分批同步全量图标与中/日/美三区上架状态...")
+            appendLog("✅ Loaded page \(page) (\(apps.count) apps, total \(items.count)/\(max(purchasedTotalCount, items.count))), hydrating icons & 3-region status...")
         } else {
-            let errMsg = Self.extractErrorMessage(from: res.stdout + "\n" + res.stderr)
-            appendLog("⚠️ 拉取已购列表: \(errMsg)")
+            let errMsg = Self.extractErrorMessage(from: res.stdout + "\n" + res.stderr, lang: lang)
+            appendLog("⚠️ list-purchases: \(errMsg)")
         }
 
         searchResults = items
         isSearching = false
         isLoadingMorePurchases = false
         await hydrateIconsAndListings(onlyUnchecked: append)
-        appendLog("✨ 已完成全部 \(searchResults.count) 款已购应用的图标与三区在架状态核验")
+        appendLog("✨ Completed hydrating all \(searchResults.count) apps")
     }
 
     // MARK: - Multi-Country Parallel Search + Single-Country Delisted Radar
@@ -782,12 +864,11 @@ final class RingoDropViewModel: ObservableObject {
 
         isSearching = true
         let activeRegions = StoreRegion.allCases.filter { selectedSearchRegions.contains($0) }
-        let regionNames = activeRegions.map(\.cuteLabel).joined(separator: " + ")
-        appendLog("🔍 正在搜索 [\(regionNames)]: \"\(trimmed)\"")
+        let regionNames = activeRegions.map { $0.cuteLabel(lang) }.joined(separator: " + ")
+        appendLog("🔍 Searching [\(regionNames)]: \"\(trimmed)\"")
 
         let extractedID = Self.extractNumericAppID(from: trimmed)
 
-        // Fetch all selected regions concurrently
         var perRegionResults: [StoreRegion: [ITunesRawItem]] = [:]
         await withTaskGroup(of: (StoreRegion, [ITunesRawItem]).self) { group in
             for reg in activeRegions {
@@ -812,7 +893,7 @@ final class RingoDropViewModel: ObservableObject {
                 let priceStr = raw.formattedPrice ?? (priceVal == 0 ? reg.freeWord : "\(priceVal)")
                 let listing = RegionListingInfo(
                     region: reg,
-                    version: raw.version ?? "在架",
+                    version: raw.version ?? "Active",
                     priceText: priceStr,
                     isFree: priceVal == 0
                 )
@@ -836,16 +917,13 @@ final class RingoDropViewModel: ObservableObject {
                         artworkUrl512: raw.artworkUrl512 ?? raw.artworkUrl100 ?? "",
                         primaryGenreName: raw.primaryGenreName ?? "App",
                         fileSizeBytes: raw.fileSizeBytes,
-                        listings: [reg: listing]
+                        listings: [reg: listing],
+                        hasCheckedRegions: false
                     )
                 }
             }
         }
 
-        // Single-Country Delisted App Radar:
-        // When user only selected 1 country (e.g. CN) and searches a delisted app (e.g. Shadowrocket / Telegram),
-        // CN returns 0 results. Automatically query global fallback metadata (US/JP) to recover its numeric App ID
-        // so the user can download the delisted app right under their single country account!
         if enableDelistedRadar {
             let lower = trimmed.lowercased()
             for preset in kPresetDelistedApps {
@@ -871,7 +949,7 @@ final class RingoDropViewModel: ObservableObject {
                         let priceStr = raw.formattedPrice ?? (priceVal == 0 ? fbReg.freeWord : "\(priceVal)")
                         let listing = RegionListingInfo(
                             region: fbReg,
-                            version: raw.version ?? "在架",
+                            version: raw.version ?? "Active",
                             priceText: priceStr,
                             isFree: priceVal == 0
                         )
@@ -881,43 +959,52 @@ final class RingoDropViewModel: ObservableObject {
                             bundleId: raw.bundleId ?? "",
                             sellerName: raw.sellerName ?? "",
                             artworkUrl512: raw.artworkUrl512 ?? raw.artworkUrl100 ?? "",
-                            primaryGenreName: raw.primaryGenreName ?? "已下架反查",
+                            primaryGenreName: raw.primaryGenreName ?? "Recovered",
                             fileSizeBytes: raw.fileSizeBytes,
                             listings: [fbReg: listing],
+                            hasCheckedRegions: false,
                             isDelistedOrRecovered: true,
-                            presetNote: "🔮 当前所选区服已下架 · 已通过跨区雷达定位数字 ID \(tid)，支持单国账号穿透下载"
+                            presetNote: lang.t(
+                                "🔮 当前所选区服已下架 · 已通过跨区雷达定位数字 ID \(tid)，支持单国穿透下载",
+                                "🔮 選択ストアでは配信終了 · 越境レーダーで ID \(tid) を特定（直結DL対応）",
+                                "🔮 Delisted in selected store · Recovered ID \(tid) via cross-store radar"
+                            )
                         )
                     }
                     if !mergedMap.isEmpty {
-                        appendLog("🔮 单国下架雷达已从 \(fbReg.cuteLabel) 档案库反查出 \(mergedMap.count) 款下架应用的数字 ID")
+                        appendLog("🔮 Radar recovered \(mergedMap.count) delisted app IDs from \(fbReg.rawValue)")
                         break
                     }
                 }
             }
         }
 
-        // If user entered a pure numeric App ID delisted everywhere, still build a direct-extraction card!
         if let explicitID = extractedID, mergedMap[explicitID] == nil {
             orderedIDs.insert(explicitID, at: 0)
             mergedMap[explicitID] = StoreAppItem(
                 trackId: explicitID,
-                trackName: "已下架应用 (ID: \(explicitID))",
-                bundleId: "纯数字 ID 穿透模式",
-                sellerName: "Apple CDN 直连提取",
+                trackName: "Delisted App (ID: \(explicitID))",
+                bundleId: "Direct Numeric ID Mode",
+                sellerName: "Apple CDN Direct",
                 artworkUrl512: "",
-                primaryGenreName: "下架提取",
+                primaryGenreName: "Delisted",
                 fileSizeBytes: nil,
                 listings: [:],
-                fallbackVersion: "CDN 最新版",
+                hasCheckedRegions: true,
+                fallbackVersion: "Latest",
                 isDelistedOrRecovered: true,
-                presetNote: "🔮 商店前端已完全隐藏 · 直接传 -i \(explicitID) 从 Apple CDN 提取 IPA"
+                presetNote: lang.t(
+                    "🔮 商店目录已隐藏 · 直接传 -i \(explicitID) 从 Apple CDN 提取 IPA",
+                    "🔮 ストア非公開 · -i \(explicitID) で Apple CDN から直接 IPA を抽出",
+                    "🔮 Delisted from catalog · Direct extraction via -i \(explicitID)"
+                )
             )
         }
 
         searchResults = orderedIDs.compactMap { mergedMap[$0] }
         await hydrateIconsAndListings()
         isSearching = false
-        appendLog("✅ 搜索完成: 共找到 \(searchResults.count) 款应用")
+        appendLog("✅ Search finished: \(searchResults.count) results")
     }
 
     static func extractNumericAppID(from input: String) -> Int64? {
@@ -965,7 +1052,7 @@ final class RingoDropViewModel: ObservableObject {
                     }
                 }
             } catch {
-                appendLog("⚠️ [\(country)] 目录请求异常: \(error.localizedDescription)")
+                appendLog("⚠️ [\(country)] Lookup error: \(error.localizedDescription)")
             }
         }
         return collected
@@ -983,7 +1070,7 @@ final class RingoDropViewModel: ObservableObject {
             displayArgs[pIdx + 1] = "********"
         }
         let cmdSummary = ([binary] + displayArgs).joined(separator: " ")
-        appendLog("▶ \(cmdSummary)" + (useProxy && !proxy.isEmpty ? " [代理: \(proxy)]" : " [直连]"))
+        appendLog("▶ \(cmdSummary)" + (useProxy && !proxy.isEmpty ? " [Proxy: \(proxy)]" : " [Direct]"))
 
         return await Task.detached(priority: .userInitiated) {
             let process = Process()
@@ -1037,7 +1124,6 @@ final class RingoDropViewModel: ObservableObject {
             let email = (json["email"] as? String) ?? ""
             let name = (json["name"] as? String) ?? ""
 
-            // Match against saved region slots or assignToRegion
             var matchedRegion: StoreRegion? = assignToRegion
             if matchedRegion == nil {
                 for reg in StoreRegion.allCases {
@@ -1060,14 +1146,13 @@ final class RingoDropViewModel: ObservableObject {
                 rawOutput: combined
             )
 
-            // Auto-bind into targetReg slot if empty or matching
             if let existing = accountSlots[targetReg], existing.email.isEmpty || existing.email.lowercased() == email.lowercased() {
                 saveSlot(region: targetReg, email: email, name: name, password: nil)
             }
-            appendLog("👤 当前在线 [\(targetReg.cuteLabel)]: \(email) (\(name))")
+            appendLog("👤 Active [\(targetReg.cuteLabel(lang))]: \(email) (\(name))")
         } else {
             activeAccount = ActiveAccountStatus(isLoggedIn: false, email: "", name: "", detectedRegion: nil, rawOutput: combined)
-            appendLog("ℹ️ 当前尚未登录 Apple ID")
+            appendLog("ℹ️ No active Apple ID session")
         }
     }
 
@@ -1076,7 +1161,6 @@ final class RingoDropViewModel: ObservableObject {
         guard !cleanEmail.isEmpty, !loginPassword.isEmpty else { return }
         isLoggingIn = true
 
-        // Restore region cookies if present
         let mainCookies = cookieFilePath(for: nil)
         let regCookies = cookieFilePath(for: editingRegion)
         if FileManager.default.fileExists(atPath: regCookies) {
@@ -1098,7 +1182,7 @@ final class RingoDropViewModel: ObservableObject {
 
         let res = await runIpatool(args: args)
         let combined = (res.stdout + "\n" + res.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
-        appendLog("🔐 [\(editingRegion.cuteLabel)] 登录响应: \(combined)")
+        appendLog("🔐 [\(editingRegion.cuteLabel(lang))] Login response: \(combined)")
 
         if res.exitCode == 0 {
             saveSlot(region: editingRegion, email: cleanEmail, name: "", password: loginPassword)
@@ -1116,7 +1200,7 @@ final class RingoDropViewModel: ObservableObject {
         saveSlot(region: region, email: activeAccount.email, name: activeAccount.name, password: nil)
         activeRegionTag = region
         activeAccount.detectedRegion = region
-        appendLog("📌 已将当前账号 \(activeAccount.email) 绑定至 \(region.cuteLabel) 槽位")
+        appendLog("📌 Bound \(activeAccount.email) to \(region.cuteLabel(lang))")
     }
 
     func revokeAccount() async {
@@ -1143,14 +1227,14 @@ final class RingoDropViewModel: ObservableObject {
         {
             let reversed = Array(versions.reversed())
             appVersions[app.trackId] = reversed
-            appendLog("📜 [\(app.trackName)] 共获取到 \(reversed.count) 个历史/灰度版本 ID")
+            appendLog("📜 [\(app.trackName)] Loaded \(reversed.count) version IDs")
         } else {
-            let msg = Self.extractErrorMessage(from: res.stdout + "\n" + res.stderr)
-            appendLog("⚠️ 获取 [\(app.trackName)] 版本列表失败: \(msg)")
+            let msg = Self.extractErrorMessage(from: res.stdout + "\n" + res.stderr, lang: lang)
+            appendLog("⚠️ [\(app.trackName)] list-versions failed: \(msg)")
         }
     }
 
-    // MARK: - Single-Country Delisted & Normal IPA Downloader (Purchased / Unpurchased / Free)
+    // MARK: - Single-Country Delisted & Normal IPA Downloader
 
     func downloadIPA(
         for app: StoreAppItem,
@@ -1169,7 +1253,11 @@ final class RingoDropViewModel: ObservableObject {
 
         downloadStates[tid] = DownloadTaskState(
             isRunning: true,
-            statusText: "[\(activeRegionTag.cuteLabel) · \(strategy.shortBadge)] 正在连接 Apple 分发服务器...",
+            statusText: "[\(activeRegionTag.cuteLabel(lang)) · \(strategy.shortBadge(lang))] " + lang.t(
+                "正在连接 Apple 分发服务器...",
+                "Apple 配信サーバーに接続中...",
+                "Connecting to Apple distribution server..."
+            ),
             downloadedFilePath: nil,
             isError: false
         )
@@ -1178,8 +1266,11 @@ final class RingoDropViewModel: ObservableObject {
 
         switch strategy {
         case .purchasedDirect:
-            // Pure numeric ID direct download (bypasses Lookup & Purchase endpoints completely)
-            downloadStates[tid]?.statusText = "🔓 正在以纯已购穿透模式 (-i \(tid)) 直连拉取 IPA..."
+            downloadStates[tid]?.statusText = "🔓 " + lang.t(
+                "正在以纯已购穿透模式 (-i \(tid)) 直连拉取 IPA...",
+                "購入済み直結モード (-i \(tid)) で IPA を取得中...",
+                "Downloading IPA via direct numeric ID (-i \(tid))..."
+            )
             var args = [
                 "download",
                 "-i", String(tid),
@@ -1193,8 +1284,11 @@ final class RingoDropViewModel: ObservableObject {
             res = await runIpatool(args: args)
 
         case .freeForceClaim:
-            // Step 1: Explicitly call `ipatool purchase -i <tid>` to force claim 0-price license by numeric ID
-            downloadStates[tid]?.statusText = "🎁 正在强制为当前账号申领免费许可证 (purchase -i \(tid))..."
+            downloadStates[tid]?.statusText = "🎁 " + lang.t(
+                "正在强制为当前账号申领免费许可证 (purchase -i \(tid))...",
+                "無料ライセンスを強制取得中 (purchase -i \(tid))...",
+                "Claiming free license (purchase -i \(tid))..."
+            )
             let purRes = await runIpatool(args: [
                 "purchase",
                 "-i", String(tid),
@@ -1202,12 +1296,13 @@ final class RingoDropViewModel: ObservableObject {
                 "--non-interactive"
             ])
             if purRes.exitCode == 0 {
-                appendLog("🎁 [\(app.trackName)] 免费许可证申领成功，开始下载 IPA...")
-            } else {
-                appendLog("ℹ️ 领券接口返回: \(Self.extractErrorMessage(from: purRes.stdout + "\n" + purRes.stderr))，继续尝试直连下载...")
+                appendLog("🎁 [\(app.trackName)] License claimed, downloading IPA...")
             }
-            // Step 2: Download with `--purchase` and fallback to pure `-i`
-            downloadStates[tid]?.statusText = "⬇️ 正在下载 IPA 安装包 (-i \(tid))..."
+            downloadStates[tid]?.statusText = "⬇️ " + lang.t(
+                "正在下载 IPA 安装包 (-i \(tid))...",
+                "IPA パッケージをダウンロード中 (-i \(tid))...",
+                "Downloading IPA package (-i \(tid))..."
+            )
             var dlArgs = [
                 "download",
                 "-i", String(tid),
@@ -1235,11 +1330,6 @@ final class RingoDropViewModel: ObservableObject {
             }
 
         case .smartAuto:
-            // Smart Auto:
-            // 1. Try download with `--purchase` (covers both unpurchased free apps & normal apps)
-            // 2. If `--purchase` fails (e.g. app is delisted in current country so purchase check fails),
-            //    immediately fallback to pure numeric ID `-i <tid>` direct download (for purchased delisted apps),
-            //    and if license is still missing, try explicit `purchase -i <tid>` once!
             var args = [
                 "download",
                 "-i", String(tid),
@@ -1254,8 +1344,12 @@ final class RingoDropViewModel: ObservableObject {
             res = await runIpatool(args: args)
 
             if res.exitCode != 0 {
-                appendLog("🔄 自动切换至「已购下架穿透模式」(-i \(tid) 跳过商店目录校验)...")
-                downloadStates[tid]?.statusText = "🔓 正在以已购下架穿透模式 (-i \(tid)) 直连拉取 IPA..."
+                appendLog("🔄 Fallback to direct purchased mode (-i \(tid))...")
+                downloadStates[tid]?.statusText = "🔓 " + lang.t(
+                    "正在以已购下架穿透模式 (-i \(tid)) 直连拉取 IPA...",
+                    "購入済み直結モード (-i \(tid)) で再試行中...",
+                    "Retrying with direct purchased ID mode (-i \(tid))..."
+                )
                 var retryArgs = [
                     "download",
                     "-i", String(tid),
@@ -1280,20 +1374,29 @@ final class RingoDropViewModel: ObservableObject {
             }
             downloadStates[tid] = DownloadTaskState(
                 isRunning: false,
-                statusText: "✅ IPA 下载完成: \((finalPath as NSString).lastPathComponent)",
+                statusText: "✅ " + lang.t(
+                    "IPA 下载完成: \((finalPath as NSString).lastPathComponent)",
+                    "IPA ダウンロード完了: \((finalPath as NSString).lastPathComponent)",
+                    "IPA Downloaded: \((finalPath as NSString).lastPathComponent)"
+                ),
                 downloadedFilePath: finalPath,
                 isError: false
             )
-            appendLog("🎉 [\(app.trackName)] 下载成功 -> \(finalPath)")
+            appendLog("🎉 [\(app.trackName)] Downloaded -> \(finalPath)")
         } else {
-            let errMsg = Self.extractErrorMessage(from: res.stdout + "\n" + res.stderr, app: app, activeRegion: activeRegionTag)
+            let errMsg = Self.extractErrorMessage(
+                from: res.stdout + "\n" + res.stderr,
+                app: app,
+                activeRegion: activeRegionTag,
+                lang: lang
+            )
             downloadStates[tid] = DownloadTaskState(
                 isRunning: false,
                 statusText: "❌ \(errMsg)",
                 downloadedFilePath: nil,
                 isError: true
             )
-            appendLog("❌ [\(app.trackName)] 下载失败: \(errMsg)")
+            appendLog("❌ [\(app.trackName)] Failed: \(errMsg)")
         }
     }
 
@@ -1301,7 +1404,11 @@ final class RingoDropViewModel: ObservableObject {
         let tid = app.trackId
         downloadStates[tid] = DownloadTaskState(
             isRunning: true,
-            statusText: "🎁 正在为当前 [\(activeRegionTag.cuteLabel)] 账号免费领券入库...",
+            statusText: "🎁 " + lang.t(
+                "正在为当前 [\(activeRegionTag.cuteLabel(lang))] 账号免费领券入库...",
+                "現在の [\(activeRegionTag.cuteLabel(lang))] アカウントで無料ライセンスを取得中...",
+                "Claiming free license for [\(activeRegionTag.cuteLabel(lang))] account..."
+            ),
             downloadedFilePath: nil,
             isError: false
         )
@@ -1314,20 +1421,29 @@ final class RingoDropViewModel: ObservableObject {
         if res.exitCode == 0 {
             downloadStates[tid] = DownloadTaskState(
                 isRunning: false,
-                statusText: "✅ 已成功免费领券入库（已绑定至 \(activeAccount.email)）",
+                statusText: "✅ " + lang.t(
+                    "已成功免费领券入库（已绑定至 \(activeAccount.email)）",
+                    "無料ライセンス取得完了（\(activeAccount.email) に紐付け済み）",
+                    "Free license claimed (\(activeAccount.email))"
+                ),
                 downloadedFilePath: nil,
                 isError: false
             )
-            appendLog("✅ [\(app.trackName)] 免费许可证入库成功")
+            appendLog("✅ [\(app.trackName)] Free license claimed")
         } else {
-            let errMsg = Self.extractErrorMessage(from: res.stdout + "\n" + res.stderr, app: app, activeRegion: activeRegionTag)
+            let errMsg = Self.extractErrorMessage(
+                from: res.stdout + "\n" + res.stderr,
+                app: app,
+                activeRegion: activeRegionTag,
+                lang: lang
+            )
             downloadStates[tid] = DownloadTaskState(
                 isRunning: false,
-                statusText: "❌ 领券失败: \(errMsg)",
+                statusText: "❌ \(errMsg)",
                 downloadedFilePath: nil,
                 isError: true
             )
-            appendLog("❌ [\(app.trackName)] 领券失败: \(errMsg)")
+            appendLog("❌ [\(app.trackName)] License claim failed: \(errMsg)")
         }
     }
 
@@ -1335,14 +1451,12 @@ final class RingoDropViewModel: ObservableObject {
         let raw = extractorInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
 
-        // Switch region account first if needed
         if extractorTargetRegion != activeRegionTag,
            let slot = accountSlots[extractorTargetRegion], !slot.email.isEmpty
         {
             await switchOrOpenAccount(for: extractorTargetRegion)
         }
 
-        // Resolve numeric ID from raw input (or cross-region search if keyword/bundleId)
         var targetID = Self.extractNumericAppID(from: raw)
         var resolvedItem: StoreAppItem?
 
@@ -1354,22 +1468,23 @@ final class RingoDropViewModel: ObservableObject {
                     let priceVal = first.price ?? 0
                     resolvedItem = StoreAppItem(
                         trackId: tid,
-                        trackName: extractorName.isEmpty ? (first.trackName ?? "下架提取_\(tid)") : extractorName,
+                        trackName: extractorName.isEmpty ? (first.trackName ?? "Delisted_\(tid)") : extractorName,
                         bundleId: first.bundleId ?? raw,
-                        sellerName: first.sellerName ?? "下架穿透提取",
+                        sellerName: first.sellerName ?? "Delisted Extractor",
                         artworkUrl512: first.artworkUrl512 ?? first.artworkUrl100 ?? "",
-                        primaryGenreName: "下架穿透提取",
+                        primaryGenreName: "Extractor",
                         fileSizeBytes: first.fileSizeBytes,
                         listings: [
                             reg: RegionListingInfo(
                                 region: reg,
-                                version: first.version ?? "最新版",
+                                version: first.version ?? "Latest",
                                 priceText: first.formattedPrice ?? (priceVal == 0 ? reg.freeWord : "\(priceVal)"),
                                 isFree: priceVal == 0
                             )
                         ],
+                        hasCheckedRegions: false,
                         isDelistedOrRecovered: true,
-                        presetNote: "🔮 下架穿透提取器定位 ID: \(tid)"
+                        presetNote: "🔮 ID: \(tid)"
                     )
                     break
                 }
@@ -1377,22 +1492,23 @@ final class RingoDropViewModel: ObservableObject {
         }
 
         guard let finalID = targetID else {
-            appendLog("❌ 未能从输入 \"\(raw)\" 解析出数字 App ID，请输入纯数字 ID (如 932747118)")
+            appendLog("❌ Could not resolve numeric App ID from \"\(raw)\"")
             return
         }
 
         let item = resolvedItem ?? StoreAppItem(
             trackId: finalID,
             trackName: extractorName.isEmpty ? "DelistedApp_\(finalID)" : extractorName,
-            bundleId: "直连数字 ID: \(finalID)",
-            sellerName: "单国下架穿透提取",
+            bundleId: "ID: \(finalID)",
+            sellerName: "Direct Extractor",
             artworkUrl512: "",
-            primaryGenreName: "下架提取",
+            primaryGenreName: "Extractor",
             fileSizeBytes: nil,
             listings: [:],
-            fallbackVersion: "最新版",
+            hasCheckedRegions: true,
+            fallbackVersion: "Latest",
             isDelistedOrRecovered: true,
-            presetNote: "🔮 单国家下架穿透提取 · 模式: \(extractorStrategy.title)"
+            presetNote: "🔮 \(extractorStrategy.title(lang))"
         )
 
         if !searchResults.contains(where: { $0.trackId == finalID }) {
@@ -1408,7 +1524,12 @@ final class RingoDropViewModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    static func extractErrorMessage(from raw: String, app: StoreAppItem? = nil, activeRegion: StoreRegion = .cn) -> String {
+    static func extractErrorMessage(
+        from raw: String,
+        app: StoreAppItem? = nil,
+        activeRegion: StoreRegion = .cn,
+        lang: ResolvedLanguage = .zh
+    ) -> String {
         for line in raw.components(separatedBy: .newlines).reversed() {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
@@ -1418,15 +1539,27 @@ final class RingoDropViewModel: ObservableObject {
             {
                 if err.contains("license is required") {
                     if let app = app {
-                        let freeRegions = app.listings.values.filter(\.isFree).map(\.region.cuteLabel)
+                        let freeRegions = app.listings.values.filter(\.isFree).map { $0.region.cuteLabel(lang) }
                         if !freeRegions.isEmpty && app.listings[activeRegion] == nil {
-                            return "当前 [\(activeRegion.cuteLabel)] 账号历史上未购买过此下架应用；但该应用在 \(freeRegions.joined(separator: "/")) 免费在架，点击顶部切换至对应区服账号即可一键免费领券下载！"
+                            return lang.t(
+                                "当前 [\(activeRegion.cuteLabel(lang))] 账号未购此下架应用；但它在 \(freeRegions.joined(separator: "/")) 免费在架，顶栏切换至对应账号即可一键免费领券下载！",
+                                "現在の [\(activeRegion.cuteLabel(lang))] アカウントは未購入ですが、\(freeRegions.joined(separator: "/")) で無料配信中です。上部バーでアカウントを切り替えると無料取得できます！",
+                                "Not owned by current [\(activeRegion.cuteLabel(lang))] account, but free in \(freeRegions.joined(separator: "/")). Switch account in top bar to claim & download!"
+                            )
                         }
                     }
-                    return "当前 [\(activeRegion.cuteLabel)] 账号无此应用许可证 (license is required)。若为已下架应用，需使用下架前曾入手过它的账号；若在外区免费在架，请点击顶部切换至日区/美区账号免费领券。"
+                    return lang.t(
+                        "当前 [\(activeRegion.cuteLabel(lang))] 账号无此应用许可证 (license is required)。下架应用需使用曾购账号；外区免费应用请切至对应区服账号领券。",
+                        "現在の [\(activeRegion.cuteLabel(lang))] アカウントにライセンスがありません (license is required)。購入済みアカウントに切り替えてください。",
+                        "License is required for current [\(activeRegion.cuteLabel(lang))] account. Please switch to an account that owns this app."
+                    )
                 }
                 if err.contains("password token is expired") || err.contains("authentication") {
-                    return "Apple ID 会话已过期，请点击顶部对应国家槽位重新登录。"
+                    return lang.t(
+                        "Apple ID 会话已过期，请点击顶栏对应国家槽位重新登录。",
+                        "Apple ID セッションの有効期限が切れました。上部バーから再ログインしてください。",
+                        "Apple ID session expired. Please re-authenticate from the top bar."
+                    )
                 }
                 return err
             }
@@ -1611,6 +1744,8 @@ struct ContentView: View {
     private let sakuraPink = Color(red: 0.96, green: 0.48, blue: 0.68)
     private let soraCyan = Color(red: 0.35, green: 0.82, blue: 0.98)
 
+    private var lang: ResolvedLanguage { vm.lang }
+
     var body: some View {
         ZStack {
             WindowVibrancyBackground()
@@ -1629,21 +1764,18 @@ struct ContentView: View {
                         endPoint: .bottomTrailing
                     )
 
-                    // Sakura Pink Glow
                     Circle()
                         .fill(sakuraPink.opacity(0.22))
                         .frame(width: 460, height: 460)
                         .blur(radius: 105)
                         .offset(x: -geo.size.width * 0.26, y: -geo.size.height * 0.24)
 
-                    // Sora Cyan Water-Drop Glow
                     Circle()
                         .fill(soraCyan.opacity(0.22))
                         .frame(width: 500, height: 500)
                         .blur(radius: 115)
                         .offset(x: geo.size.width * 0.28, y: -geo.size.height * 0.08)
 
-                    // Sumire Violet Glow
                     Circle()
                         .fill(Color.indigo.opacity(0.24))
                         .frame(width: 440, height: 440)
@@ -1675,11 +1807,11 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - 1. Top Brand & 3-Country Account Dock (CN / JP / US)
+    // MARK: - 1. Top Brand (with Version Badge), 3-Country Account Dock & Language Switcher
 
     private var topBrandAndThreeCountryAccountBar: some View {
-        HStack(spacing: 12) {
-            // Cute RingoDrop Brand Logo
+        HStack(spacing: 10) {
+            // Brand Logo + Version Pill
             HStack(spacing: 11) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -1712,29 +1844,46 @@ struct ContentView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 7) {
+                    HStack(spacing: 6) {
                         Text("RingoDrop")
-                            .font(.system(size: 19, weight: .heavy, design: .rounded))
+                            .font(.system(size: 18.5, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
 
                         Text("りんご雫")
-                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                            .padding(.horizontal, 8)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(sakuraPink.opacity(0.28)))
                             .overlay(Capsule().strokeBorder(sakuraPink.opacity(0.65), lineWidth: 0.9))
                             .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.92))
+
+                        // Visible Main UI Version Pill (v1.0.1)
+                        Text(kRingoDropVersion)
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(soraCyan.opacity(0.24)))
+                            .overlay(Capsule().strokeBorder(soraCyan.opacity(0.65), lineWidth: 0.9))
+                            .foregroundColor(Color(red: 0.72, green: 0.95, blue: 1.0))
                     }
-                    Text("中 🇨🇳 · 日 🇯🇵 · 美 🇺🇸 三国账号切换 · 多国联合搜索 & 下架 IPA 提取")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.white.opacity(0.70))
+
+                    Text(
+                        lang.t(
+                            "中 🇨🇳 · 日 🇯🇵 · 美 🇺🇸 三国账号切换 · 多国联合搜索 & 下架 IPA 提取",
+                            "中 🇨🇳 · 日 🇯🇵 · 米 🇺🇸 3ヶ国アカウント切替 · マルチ検索 & 配信終了 IPA 抽出",
+                            "CN 🇨🇳 · JP 🇯🇵 · US 🇺🇸 Multi-Account Switcher · Joint Search & Delisted IPA Extractor"
+                        )
+                    )
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.70))
+                    .lineLimit(1)
                 }
             }
 
             Spacer()
 
             // 3-Country Account Switcher Dock (CN / JP / US)
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 ForEach(StoreRegion.allCases) { reg in
                     regionAccountPill(for: reg)
                 }
@@ -1743,18 +1892,46 @@ struct ContentView: View {
                     vm.prepareLoginSheet(for: vm.activeRegionTag)
                 } label: {
                     Image(systemName: "person.badge.key.fill")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12.5))
                         .foregroundColor(.white.opacity(0.88))
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 5)
                 }
                 .buttonStyle(.plain)
-                .help("管理中/日/美三国 Apple ID 账号")
             }
-            .padding(6)
+            .padding(5)
             .liquidGlassCard(cornerRadius: 18, tintColor: sakuraPink, tintOpacity: 0.07, highlightIntensity: 0.45)
 
+            // Language Switcher Pill (System / 中文 / 日本語 / English)
+            Menu {
+                ForEach(AppLanguageSetting.allCases) { option in
+                    Button {
+                        vm.languageSetting = option
+                    } label: {
+                        HStack {
+                            Text(option.menuTitle)
+                            if vm.languageSetting == option {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(vm.languageSetting.pillTitle)
+                        .font(.system(size: 11.5, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundColor(.white.opacity(0.92))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .liquidGlassCard(cornerRadius: 18, tintColor: sakuraPink, tintOpacity: 0.06, highlightIntensity: 0.40)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
             // Proxy Quick Pill
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 Toggle("", isOn: $vm.proxyEnabled)
                     .toggleStyle(.switch)
                     .labelsHidden()
@@ -1767,8 +1944,8 @@ struct ContentView: View {
                         Circle()
                             .fill(vm.proxyEnabled ? Color.green : Color.gray)
                             .frame(width: 7, height: 7)
-                        Text(vm.proxyEnabled ? vm.proxyURL.replacingOccurrences(of: "http://", with: "") : "直连")
-                            .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                        Text(vm.proxyEnabled ? vm.proxyURL.replacingOccurrences(of: "http://", with: "") : lang.t("直连", "直結", "Direct"))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .lineLimit(1)
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 11))
@@ -1777,7 +1954,7 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .foregroundColor(.white.opacity(0.9))
             }
-            .padding(.horizontal, 11)
+            .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .liquidGlassCard(cornerRadius: 18, tintColor: soraCyan, tintOpacity: 0.06, highlightIntensity: 0.40)
         }
@@ -1794,29 +1971,29 @@ struct ContentView: View {
         return Button {
             Task { await vm.switchOrOpenAccount(for: region) }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Circle()
                     .fill(isActive ? Color.green : (hasEmail ? Color.cyan : Color.white.opacity(0.28)))
                     .frame(width: 7, height: 7)
 
-                Text(region.cuteLabel)
-                    .font(.system(size: 12, weight: isActive ? .bold : .semibold))
+                Text(region.cuteLabel(lang))
+                    .font(.system(size: 11.5, weight: isActive ? .bold : .semibold))
 
                 if isActive {
                     Text(Self.shortEmail(vm.activeAccount.email))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                         .foregroundColor(.white.opacity(0.92))
                 } else if let email = slot?.email, !email.isEmpty {
                     Text(Self.shortEmail(email))
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.white.opacity(0.68))
                 } else {
-                    Text("未登录")
-                        .font(.system(size: 10.5))
+                    Text(lang.t("未登录", "未ログイン", "Sign In"))
+                        .font(.system(size: 10))
                         .foregroundColor(.white.opacity(0.48))
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background(
                 Capsule(style: .continuous)
@@ -1841,8 +2018,8 @@ struct ContentView: View {
     private static func shortEmail(_ email: String) -> String {
         guard let atIdx = email.firstIndex(of: "@") else { return email }
         let prefix = String(email[..<atIdx])
-        if prefix.count <= 9 { return prefix }
-        return String(prefix.prefix(8)) + "…"
+        if prefix.count <= 8 { return prefix }
+        return String(prefix.prefix(7)) + "…"
     }
 
     // MARK: - 2. Multi-Country Search Bar & Delisted Controls
@@ -1850,19 +2027,25 @@ struct ContentView: View {
     private var multiCountrySearchAndStrategyBar: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                // Search Input Box
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(sakuraPink)
 
-                    TextField("搜索 App 名称 / Bundle ID / 纯数字 ID (如 932747118 / Shadowrocket / Telegram / ウマ娘)...", text: $vm.searchQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13.5))
-                        .foregroundColor(.white)
-                        .onSubmit {
-                            Task { await vm.performSearch() }
-                        }
+                    TextField(
+                        lang.t(
+                            "搜索 App 名称 / Bundle ID / 纯数字 ID (如 932747118 / Shadowrocket / Telegram / ウマ娘)...",
+                            "App名 / Bundle ID / 数字ID で検索 (例: 932747118 / Shadowrocket / Telegram / ウマ娘)...",
+                            "Search App Name / Bundle ID / Numeric ID (e.g. 932747118 / Shadowrocket / Telegram)..."
+                        ),
+                        text: $vm.searchQuery
+                    )
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13.5))
+                    .foregroundColor(.white)
+                    .onSubmit {
+                        Task { await vm.performSearch() }
+                    }
 
                     if !vm.searchQuery.isEmpty {
                         Button {
@@ -1877,7 +2060,7 @@ struct ContentView: View {
 
                     // Multi-Country Search Selection Check-Pills (CN / JP / US)
                     HStack(spacing: 5) {
-                        Text("搜索区:")
+                        Text(lang.t("搜索区:", "対象:", "Stores:"))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.white.opacity(0.60))
 
@@ -1890,7 +2073,7 @@ struct ContentView: View {
                                     Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
                                         .font(.system(size: 10.5))
                                         .foregroundColor(isOn ? reg.accentColor : .white.opacity(0.4))
-                                    Text("\(reg.flag)\(reg.shortName)")
+                                    Text("\(reg.flag)\(reg.shortName(lang))")
                                         .font(.system(size: 11.5, weight: isOn ? .bold : .regular))
                                 }
                                 .padding(.horizontal, 8)
@@ -1920,8 +2103,12 @@ struct ContentView: View {
                             } else {
                                 Image(systemName: "sparkles")
                             }
-                            Text(vm.selectedSearchRegions.count > 1 ? "多国联搜" : "单国搜索")
-                                .font(.system(size: 12.5, weight: .bold))
+                            Text(
+                                vm.selectedSearchRegions.count > 1
+                                    ? lang.t("多国联搜", "一括検索", "Multi-Search")
+                                    : lang.t("单国搜索", "検索", "Search")
+                            )
+                            .font(.system(size: 12.5, weight: .bold))
                         }
                     }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: true, tint: sakuraPink))
@@ -1936,19 +2123,18 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "wand.and.stars")
-                        Text("下架提取")
+                        Text(lang.t("下架提取", "配信終了抽出", "Extractor"))
                             .font(.system(size: 12.5, weight: .bold))
                     }
                 }
                 .buttonStyle(LiquidGlassButtonStyle(prominent: true, tint: soraCyan))
-                .help("单国家下载已下架 App（支持已购直下 / 未购免费强制领券）")
 
                 Button {
                     Task { await vm.loadPurchasedApps() }
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "bag.fill")
-                        Text("我的已购")
+                        Text(lang.t("我的已购", "購入済み", "Purchased"))
                             .font(.system(size: 12.5, weight: .semibold))
                     }
                 }
@@ -1958,32 +2144,39 @@ struct ContentView: View {
             // Sub-bar: Result Region Filter & Single-Country Delisted Download Mode Picker
             HStack(spacing: 12) {
                 HStack(spacing: 5) {
-                    filterTabPill(title: "全部 (\(vm.searchResults.count))", tag: "ALL")
-                    filterTabPill(title: "🇨🇳 国区", tag: "CN")
-                    filterTabPill(title: "🇯🇵 日区", tag: "JP")
-                    filterTabPill(title: "🇺🇸 美区", tag: "US")
-                    filterTabPill(title: "🔮 已下架/跨区", tag: "DELISTED")
+                    filterTabPill(title: "\(lang.t("全部", "すべて", "All")) (\(vm.searchResults.count))", tag: "ALL")
+                    filterTabPill(title: StoreRegion.cn.cuteLabel(lang), tag: "CN")
+                    filterTabPill(title: StoreRegion.jp.cuteLabel(lang), tag: "JP")
+                    filterTabPill(title: StoreRegion.us.cuteLabel(lang), tag: "US")
+                    filterTabPill(title: lang.t("🔮 已下架/跨区", "🔮 配信終了/越境", "🔮 Delisted"), tag: "DELISTED")
                 }
 
                 Spacer()
 
-                Toggle("单国搜索自动开启「下架 App 数字 ID 雷达」", isOn: $vm.enableDelistedRadar)
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.white.opacity(0.82))
-                    .toggleStyle(.checkbox)
+                Toggle(
+                    lang.t(
+                        "单国搜索自动开启「下架 App 数字 ID 雷达」",
+                        "単一国検索時に「配信終了 App ID レーダー」を自動有効化",
+                        "Auto-enable Delisted App ID Radar"
+                    ),
+                    isOn: $vm.enableDelistedRadar
+                )
+                .font(.system(size: 11.5))
+                .foregroundColor(.white.opacity(0.82))
+                .toggleStyle(.checkbox)
 
                 HStack(spacing: 6) {
-                    Text("下载策略:")
+                    Text(lang.t("下载策略:", "取得モード:", "Mode:"))
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundColor(.white.opacity(0.70))
 
                     Picker("", selection: $vm.downloadStrategy) {
                         ForEach(DelistedDownloadStrategy.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                            Text(mode.title(lang)).tag(mode)
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 250)
+                    .frame(width: 255)
                     .controlSize(.small)
                 }
             }
@@ -2024,9 +2217,15 @@ struct ContentView: View {
                     HStack(spacing: 7) {
                         Image(systemName: "sparkles.tv.fill")
                             .foregroundColor(sakuraPink)
-                        Text("りんご雫 · 精选已下架 / 跨区热门直通车（支持中 🇨🇳 · 日 🇯🇵 · 美 🇺🇸 三国账号已购直下或免费领券下载）")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.78))
+                        Text(
+                            lang.t(
+                                "りんご雫 · 精选已下架 / 跨区热门直通车（支持中 🇨🇳 · 日 🇯🇵 · 美 🇺🇸 三国账号已购直下或免费领券下载）",
+                                "りんご雫 · 配信終了 / 越境人気アプリ直通リスト（中 🇨🇳 · 日 🇯🇵 · 米 🇺🇸 購入済み直結・無料取得対応）",
+                                "RingoDrop · Featured Delisted & Cross-Region Apps (CN 🇨🇳 · JP 🇯🇵 · US 🇺🇸 Direct Download & Free Claim)"
+                            )
+                        )
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.78))
                         Spacer()
                     }
                     .padding(.horizontal, 6)
@@ -2050,8 +2249,14 @@ struct ContentView: View {
                                 } else {
                                     Image(systemName: "arrow.down.circle")
                                 }
-                                Text("加载下一页已购应用 (当前已加载 \(vm.searchResults.count) 款 / 账号共 \(vm.purchasedTotalCount) 款已购)")
-                                    .font(.system(size: 12.5, weight: .semibold))
+                                Text(
+                                    lang.t(
+                                        "加载下一页已购应用 (当前已加载 \(vm.searchResults.count) 款 / 账号共 \(vm.purchasedTotalCount) 款已购)",
+                                        "次の購入済みページを読み込む (現在 \(vm.searchResults.count) 件 / 全 \(vm.purchasedTotalCount) 件)",
+                                        "Load More Purchased Apps (\(vm.searchResults.count) loaded / \(vm.purchasedTotalCount) total)"
+                                    )
+                                )
+                                .font(.system(size: 12.5, weight: .semibold))
                             }
                         }
                         .buttonStyle(LiquidGlassButtonStyle(prominent: true, tint: sakuraPink))
@@ -2073,11 +2278,14 @@ struct ContentView: View {
             if vm.showConsole {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Label("RingoDrop (りんご雫) 实时通信日志", systemImage: "terminal.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(sakuraPink)
+                        Label(
+                            lang.t("RingoDrop (りんご雫) 实时通信日志", "RingoDrop (りんご雫) リアルタイム通信ログ", "RingoDrop Live Console Logs"),
+                            systemImage: "terminal.fill"
+                        )
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(sakuraPink)
                         Spacer()
-                        Button("清空日志") {
+                        Button(lang.t("清空日志", "ログを消去", "Clear")) {
                             vm.logs.removeAll()
                         }
                         .buttonStyle(.plain)
@@ -2110,7 +2318,7 @@ struct ContentView: View {
                 .liquidGlassCard(cornerRadius: 16, tintColor: sakuraPink, tintOpacity: 0.07, highlightIntensity: 0.45)
             }
 
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Button {
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                         vm.showConsole.toggle()
@@ -2118,16 +2326,26 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "terminal")
-                        Text(vm.showConsole ? "收起日志" : "展开日志")
+                        Text(
+                            vm.showConsole
+                                ? lang.t("收起日志", "ログを隠す", "Hide Logs")
+                                : lang.t("展开日志", "ログを表示", "Show Logs")
+                        )
                     }
                     .font(.system(size: 12, weight: .medium))
                 }
                 .buttonStyle(LiquidGlassButtonStyle(prominent: false))
 
-                Text("当前激活区服: \(vm.activeRegionTag.cuteLabel) (\(vm.activeAccount.isLoggedIn ? vm.activeAccount.email : "未登录"))  ·  ⚠️ 免责声明：仅限找回本人已购丢失 App 及个人研究，严禁用于其他任何用途")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.72))
-                    .lineLimit(1)
+                Text(
+                    lang.t(
+                        "当前区服: \(vm.activeRegionTag.cuteLabel(lang)) (\(vm.activeAccount.isLoggedIn ? vm.activeAccount.email : "未登录")) · ⚠️ 免责声明：仅限找回本人已购丢失 App 及个人研究，严禁用于其他任何用途",
+                        "現在のストア: \(vm.activeRegionTag.cuteLabel(lang)) (\(vm.activeAccount.isLoggedIn ? vm.activeAccount.email : "未ログイン")) · ⚠️ 免責事項：本人購入済みAppの復元・個人研究専用（他用途厳禁）",
+                        "Active Store: \(vm.activeRegionTag.cuteLabel(lang)) (\(vm.activeAccount.isLoggedIn ? vm.activeAccount.email : "Signed Out")) · ⚠️ Disclaimer: For personal purchased app recovery & research only"
+                    )
+                )
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.72))
+                .lineLimit(1)
 
                 Spacer()
 
@@ -2135,11 +2353,11 @@ struct ContentView: View {
                     Image(systemName: "folder.fill")
                         .foregroundColor(sakuraPink)
                         .font(.system(size: 12))
-                    Text("保存至: \(vm.downloadDirectory)")
+                    Text("\(lang.t("保存至:", "保存先:", "Save to:")) \(vm.downloadDirectory)")
                         .font(.system(size: 11.5, design: .monospaced))
                         .foregroundColor(.white.opacity(0.75))
                         .lineLimit(1)
-                    Button("打开目录") {
+                    Button(lang.t("打开目录", "開く", "Open")) {
                         NSWorkspace.shared.open(URL(fileURLWithPath: vm.downloadDirectory))
                     }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: false))
@@ -2156,8 +2374,10 @@ struct AppLiquidGlassRow: View {
     let app: StoreAppItem
     @ObservedObject var vm: RingoDropViewModel
     @State private var showVersionsPopover: Bool = false
+    @State private var isHoveringTitle: Bool = false
 
     private let sakuraPink = Color(red: 0.96, green: 0.48, blue: 0.68)
+    private var lang: ResolvedLanguage { vm.lang }
 
     var taskState: DownloadTaskState {
         vm.downloadStates[app.trackId] ?? DownloadTaskState()
@@ -2171,10 +2391,31 @@ struct AppLiquidGlassRow: View {
         vm.selectedVersionForApp[app.trackId] ?? ""
     }
 
+    var hoverSummaryText: String {
+        var lines: [String] = [
+            "📱 \(app.trackName)",
+            "🆔 App ID: \(app.trackId)",
+            "📦 Bundle ID: \(app.bundleId.isEmpty ? "-" : app.bundleId)"
+        ]
+        if !app.sellerName.isEmpty {
+            lines.append("🏢 \(app.sellerName)")
+        }
+        if !app.formattedSize.isEmpty {
+            lines.append("💾 \(app.formattedSize)")
+        }
+        for reg in StoreRegion.allCases {
+            if let info = app.listings[reg] {
+                lines.append("\(reg.cuteLabel(lang)): \(info.priceText) · v\(info.version)")
+            } else if reg == .cn && app.hasCheckedRegions {
+                lines.append("\(reg.cuteLabel(lang)): " + lang.t("已下架 (支持已购穿透直下)", "配信終了 (購入済直結DL可)", "Delisted (Direct ID download supported)"))
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 14) {
-                // App Icon
+            HStack(alignment: .center, spacing: 14) {
                 AsyncImage(url: URL(string: app.artworkUrl512)) { phase in
                     switch phase {
                     case .success(let image):
@@ -2194,7 +2435,7 @@ struct AppLiquidGlassRow: View {
                         }
                     }
                 }
-                .frame(width: 62, height: 62)
+                .frame(width: 64, height: 64)
                 .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
@@ -2202,41 +2443,46 @@ struct AppLiquidGlassRow: View {
                 )
                 .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
 
-                // Metadata & 3-Country Storefront Badges
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 7) {
+                VStack(alignment: .leading, spacing: 6) {
+                    // Row 1: Full-width App Name (with hover trigger for floating detail card)
+                    HStack(spacing: 6) {
                         Text(app.trackName)
                             .font(.system(size: 15.5, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                             .lineLimit(1)
+                            .truncationMode(.tail)
 
-                        // CN / JP / US Storefront Badges
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(.white.opacity(isHoveringTitle ? 0.95 : 0.42))
+                    }
+
+                    // Row 2: 3-Country Storefront Badges + Core Identifiers
+                    HStack(spacing: 7) {
                         ForEach(StoreRegion.allCases) { reg in
                             if let info = app.listings[reg] {
                                 storefrontBadge(
-                                    flag: reg.cuteLabel,
+                                    flag: reg.cuteLabel(lang),
                                     detail: "\(info.priceText) · v\(info.version)",
                                     color: reg.accentColor
                                 )
                             } else if reg == .cn {
                                 if app.hasCheckedRegions {
                                     storefrontBadge(
-                                        flag: "🇨🇳 国区已下架",
-                                        detail: "可穿透直下",
+                                        flag: lang.t("🇨🇳 国区已下架", "🇨🇳 中国配信終了", "🇨🇳 Delisted in CN"),
+                                        detail: lang.t("可穿透直下", "直結DL可", "Direct DL"),
                                         color: .orange
                                     )
                                 } else {
                                     storefrontBadge(
-                                        flag: "⏳ 正在核验在架状态",
-                                        detail: "v\(app.fallbackVersion ?? "已购")",
+                                        flag: lang.t("⏳ 正在核验在架状态", "⏳ 配信状況を確認中", "⏳ Checking Store"),
+                                        detail: "v\(app.fallbackVersion ?? "")",
                                         color: .cyan
                                     )
                                 }
                             }
                         }
-                    }
 
-                    HStack(spacing: 12) {
                         Label("ID: \(String(app.trackId))", systemImage: "number")
                             .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                             .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.86))
@@ -2249,6 +2495,7 @@ struct AppLiquidGlassRow: View {
                                 .font(.system(size: 11.5, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.68))
                                 .lineLimit(1)
+                                .truncationMode(.middle)
                                 .textSelection(.enabled)
                         }
 
@@ -2259,13 +2506,6 @@ struct AppLiquidGlassRow: View {
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                         }
-
-                        if !app.sellerName.isEmpty {
-                            Text(app.sellerName)
-                                .font(.system(size: 11.5))
-                                .foregroundColor(.white.opacity(0.55))
-                                .lineLimit(1)
-                        }
                     }
 
                     if let note = app.presetNote {
@@ -2275,12 +2515,26 @@ struct AppLiquidGlassRow: View {
                             .lineLimit(1)
                     }
                 }
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        isHoveringTitle = hovering
+                    }
+                }
+                .help(hoverSummaryText)
+                .overlay(alignment: .bottomLeading) {
+                    if isHoveringTitle {
+                        hoverDetailFloatingCard
+                            .offset(x: 0, y: 82)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+                            .allowsHitTesting(false)
+                    }
+                }
+                .zIndex(isHoveringTitle ? 200 : 1)
 
                 Spacer()
 
-                // Action Buttons
                 HStack(spacing: 7) {
-                    // Historical Version Selector
                     Button {
                         showVersionsPopover.toggle()
                         if versions.isEmpty {
@@ -2295,29 +2549,26 @@ struct AppLiquidGlassRow: View {
                             } else {
                                 Image(systemName: "clock.arrow.circlepath")
                             }
-                            Text(selectedVersion.isEmpty ? "选版本" : "vID:\(selectedVersion.suffix(5))")
+                            Text(selectedVersion.isEmpty ? lang.t("选版本", "版選択", "Versions") : "vID:\(selectedVersion.suffix(5))")
                                 .font(.system(size: 12, weight: .medium))
                         }
                     }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: false))
 
-                    // Free License Claim Button
                     if app.isFreeInAnyRegion || app.isDelistedOrRecovered {
                         Button {
                             Task { await vm.claimFreeLicenseOnly(for: app) }
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "gift.fill")
-                                Text("免费领券")
+                                Text(lang.t("免费领券", "無料取得", "Claim"))
                                     .font(.system(size: 12, weight: .medium))
                             }
                         }
                         .buttonStyle(LiquidGlassButtonStyle(prominent: false))
                         .disabled(taskState.isRunning)
-                        .help("强制按数字 ID 申领 0 元免费许可证 (ipatool purchase -i)")
                     }
 
-                    // Primary One-Click Download IPA Button
                     Button {
                         let ver = selectedVersion.isEmpty ? nil : selectedVersion
                         Task { await vm.downloadIPA(for: app, explicitVersionID: ver) }
@@ -2327,10 +2578,10 @@ struct AppLiquidGlassRow: View {
                                 ProgressView()
                                     .controlSize(.small)
                                     .scaleEffect(0.75)
-                                Text("下载中...")
+                                Text(lang.t("下载中...", "DL中...", "Downloading..."))
                             } else {
                                 Image(systemName: "arrow.down.circle.fill")
-                                Text("一键下载 IPA")
+                                Text(lang.t("一键下载 IPA", "IPA を取得", "Download IPA"))
                             }
                         }
                         .font(.system(size: 13, weight: .bold))
@@ -2340,15 +2591,20 @@ struct AppLiquidGlassRow: View {
                 }
             }
 
-            // Expandable Version Selector Bar
             if showVersionsPopover {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("📜 Apple 服务器历史与最新灰度版本 ID (点击任意版本后点「一键下载 IPA」即可指定版本下载):")
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundColor(.white.opacity(0.82))
+                        Text(
+                            lang.t(
+                                "📜 Apple 服务器历史与最新灰度版本 ID (点击任意版本后点「一键下载 IPA」即可指定版本下载):",
+                                "📜 Apple サーバー上の履歴・最新バージョン ID (選択後に「IPA を取得」をクリック):",
+                                "📜 Historical & Phased-Release Version IDs (Select a version ID, then click Download IPA):"
+                            )
+                        )
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.82))
                         Spacer()
-                        Button("刷新列表") {
+                        Button(lang.t("刷新列表", "更新", "Refresh")) {
                             Task { await vm.fetchVersions(for: app) }
                         }
                         .buttonStyle(.plain)
@@ -2357,16 +2613,20 @@ struct AppLiquidGlassRow: View {
                     }
 
                     if versions.isEmpty {
-                        Text(vm.loadingVersionsFor.contains(app.trackId) ? "正在从 Apple 服务器拉取历史版本列表..." : "暂未读取到版本列表（需当前激活账号拥有该应用已购权限或先点「免费领券」）")
-                            .font(.system(size: 11.5))
-                            .foregroundColor(.white.opacity(0.6))
+                        Text(
+                            vm.loadingVersionsFor.contains(app.trackId)
+                                ? lang.t("正在从 Apple 服务器拉取历史版本列表...", "バージョン一覧を取得中...", "Fetching version list from Apple...")
+                                : lang.t("暂未读取到版本列表（需当前激活账号拥有该应用已购权限或先点「免费领券」）", "バージョン一覧を取得できません（購入済みアカウントまたは「無料取得」が必要です）", "No versions loaded (Requires an account that owns this app)")
+                        )
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.white.opacity(0.6))
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
-                                versionChip(label: "最新版 (默认)", versionID: "")
+                                versionChip(label: lang.t("最新版 (默认)", "最新版 (既定)", "Latest (Default)"), versionID: "")
                                 ForEach(Array(versions.prefix(35).enumerated()), id: \.element) { idx, verID in
                                     versionChip(
-                                        label: idx == 0 ? "最新 #\(verID)" : "#\(verID)",
+                                        label: idx == 0 ? "\(lang.t("最新", "最新", "Latest")) #\(verID)" : "#\(verID)",
                                         versionID: verID
                                     )
                                 }
@@ -2381,7 +2641,6 @@ struct AppLiquidGlassRow: View {
                 )
             }
 
-            // Task Status & Quick Mode Retry / Finder Reveal Banner
             if !taskState.statusText.isEmpty {
                 HStack(spacing: 10) {
                     Text(taskState.statusText)
@@ -2392,14 +2651,14 @@ struct AppLiquidGlassRow: View {
                     Spacer()
 
                     if taskState.isError {
-                        Button("已购穿透重试") {
+                        Button(lang.t("已购穿透重试", "購入済直結で再試行", "Retry Direct ID")) {
                             let ver = selectedVersion.isEmpty ? nil : selectedVersion
                             Task { await vm.downloadIPA(for: app, explicitVersionID: ver, strategyOverride: .purchasedDirect) }
                         }
                         .buttonStyle(LiquidGlassButtonStyle(prominent: false))
                         .font(.system(size: 11))
 
-                        Button("强制领券重试") {
+                        Button(lang.t("强制领券重试", "無料取得で再試行", "Retry Free Claim")) {
                             let ver = selectedVersion.isEmpty ? nil : selectedVersion
                             Task { await vm.downloadIPA(for: app, explicitVersionID: ver, strategyOverride: .freeForceClaim) }
                         }
@@ -2413,7 +2672,7 @@ struct AppLiquidGlassRow: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "folder.badge.gearshape")
-                                Text("在访达中显示 IPA")
+                                Text(lang.t("在访达中显示 IPA", "Finder で表示", "Show in Finder"))
                             }
                             .font(.system(size: 11.5, weight: .semibold))
                         }
@@ -2426,6 +2685,73 @@ struct AppLiquidGlassRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
         .liquidGlassCard(cornerRadius: 20, tintColor: sakuraPink, tintOpacity: 0.07, highlightIntensity: 0.48)
+        .zIndex(isHoveringTitle ? 200 : 1)
+    }
+
+    private var hoverDetailFloatingCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(app.trackName)
+                .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Text("App ID: \(String(app.trackId))")
+                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0.88))
+
+                if !app.bundleId.isEmpty {
+                    Text("Bundle: \(app.bundleId)")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundColor(.cyan)
+                }
+
+                if !app.formattedSize.isEmpty {
+                    Text("\(lang.t("大小", "サイズ", "Size")): \(app.formattedSize)")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+            }
+
+            if !app.sellerName.isEmpty {
+                Text("\(lang.t("开发者", "開発元", "Developer")): \(app.sellerName) · \(app.primaryGenreName)")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.white.opacity(0.75))
+            }
+
+            HStack(spacing: 8) {
+                ForEach(StoreRegion.allCases) { reg in
+                    if let info = app.listings[reg] {
+                        Text("\(reg.cuteLabel(lang)): \(info.priceText) (v\(info.version))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(reg.accentColor)
+                    } else if reg == .cn && app.hasCheckedRegions {
+                        Text("\(reg.cuteLabel(lang)): \(lang.t("已下架/未上架", "配信終了", "Delisted"))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minWidth: 420, maxWidth: 620, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(red: 0.06, green: 0.08, blue: 0.18).opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.75), sakuraPink.opacity(0.65), Color.cyan.opacity(0.55)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.2
+                )
+        )
+        .shadow(color: .black.opacity(0.45), radius: 16, x: 0, y: 8)
     }
 
     private func storefrontBadge(flag: String, detail: String, color: Color) -> some View {
@@ -2481,18 +2807,25 @@ struct ThreeCountryAccountSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private let sakuraPink = Color(red: 0.96, green: 0.48, blue: 0.68)
+    private var lang: ResolvedLanguage { vm.lang }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("中 🇨🇳 · 日 🇯🇵 · 美 🇺🇸 三国 Apple ID 账号舱", systemImage: "apple.logo")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                Label(
+                    lang.t(
+                        "中 🇨🇳 · 日 🇯🇵 · 美 🇺🇸 三国 Apple ID 账号舱",
+                        "中 🇨🇳 · 日 🇯🇵 · 米 🇺🇸 3ヶ国 Apple ID アカウント管理",
+                        "CN 🇨🇳 · JP 🇯🇵 · US 🇺🇸 Multi-Region Apple ID Dock"
+                    ),
+                    systemImage: "apple.logo"
+                )
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 Spacer()
-                Button("关闭") { dismiss() }
+                Button(lang.t("关闭", "閉じる", "Close")) { dismiss() }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: false))
             }
 
-            // 3 Region Account Cards
             HStack(spacing: 10) {
                 ForEach(StoreRegion.allCases) { reg in
                     let slot = vm.accountSlots[reg]
@@ -2501,11 +2834,11 @@ struct ThreeCountryAccountSheet: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text(reg.cuteLabel)
+                            Text(reg.cuteLabel(lang))
                                 .font(.system(size: 13.5, weight: .bold))
                             Spacer()
                             if isOnline {
-                                Text("当前在线")
+                                Text(lang.t("当前在线", "オンライン", "Active"))
                                     .font(.system(size: 10, weight: .bold))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
@@ -2514,26 +2847,34 @@ struct ThreeCountryAccountSheet: View {
                             }
                         }
 
-                        Text(slot?.email.isEmpty == false ? (slot?.email ?? "") : "尚未绑定 \(reg.shortName) Apple ID")
-                            .font(.system(size: 11.5, design: .monospaced))
-                            .foregroundColor(slot?.email.isEmpty == false ? .white : .secondary)
-                            .lineLimit(1)
+                        Text(
+                            slot?.email.isEmpty == false
+                                ? (slot?.email ?? "")
+                                : lang.t("尚未绑定 \(reg.shortName(lang)) Apple ID", "未登録 (\(reg.shortName(lang)))", "No \(reg.shortName(lang)) Apple ID")
+                        )
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundColor(slot?.email.isEmpty == false ? .white : .secondary)
+                        .lineLimit(1)
 
                         HStack(spacing: 6) {
-                            Button(slot?.email.isEmpty == false ? "切换/编辑" : "添加账号") {
+                            Button(
+                                slot?.email.isEmpty == false
+                                    ? lang.t("切换/编辑", "切替/編集", "Edit")
+                                    : lang.t("添加账号", "追加", "Add")
+                            ) {
                                 vm.prepareLoginSheet(for: reg)
                             }
                             .font(.system(size: 11))
 
                             if vm.activeAccount.isLoggedIn && (slot?.email.isEmpty ?? true) {
-                                Button("绑定当前号") {
+                                Button(lang.t("绑定当前号", "現在を紐付", "Bind Current")) {
                                     vm.bindCurrentActiveSession(to: reg)
                                 }
                                 .font(.system(size: 11))
                             }
 
                             if slot?.email.isEmpty == false {
-                                Button("移除") {
+                                Button(lang.t("移除", "削除", "Remove")) {
                                     vm.removeSlot(region: reg)
                                 }
                                 .font(.system(size: 11))
@@ -2555,40 +2896,63 @@ struct ThreeCountryAccountSheet: View {
                 }
             }
 
-            // Login Form for Selected Region
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("登录并保存至：\(vm.editingRegion.cuteLabel) (\(vm.editingRegion.jpSubtitle))")
+                    Text("\(vm.editingRegion.cuteLabel(lang)) (\(vm.editingRegion.storeSubtitle(lang)))")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(vm.editingRegion.accentColor)
                     Spacer()
-                    Picker("目标区服", selection: $vm.editingRegion) {
+                    Picker("", selection: $vm.editingRegion) {
                         ForEach(StoreRegion.allCases) { reg in
-                            Text(reg.cuteLabel).tag(reg)
+                            Text(reg.cuteLabel(lang)).tag(reg)
                         }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 210)
+                    .frame(width: 220)
                 }
 
-                TextField("输入 \(vm.editingRegion.shortName) Apple ID 邮箱 (如 example@icloud.com)", text: $vm.loginEmail)
-                    .textFieldStyle(.roundedBorder)
+                TextField(
+                    lang.t(
+                        "输入 \(vm.editingRegion.shortName(lang)) Apple ID 邮箱 (如 example@icloud.com)",
+                        "\(vm.editingRegion.shortName(lang)) Apple ID メールアドレス (例: example@icloud.com)",
+                        "Enter \(vm.editingRegion.shortName(lang)) Apple ID Email (e.g. example@icloud.com)"
+                    ),
+                    text: $vm.loginEmail
+                )
+                .textFieldStyle(.roundedBorder)
 
-                SecureField("输入 Apple ID 密码", text: $vm.loginPassword)
-                    .textFieldStyle(.roundedBorder)
+                SecureField(
+                    lang.t("输入 Apple ID 密码", "Apple ID パスワード", "Apple ID Password"),
+                    text: $vm.loginPassword
+                )
+                .textFieldStyle(.roundedBorder)
 
-                TextField("6 位双重验证码 (推荐在 iPhone 设置 -> Apple 账户 -> 登录与安全性 -> 双重认证 -> 获取验证码)", text: $vm.login2FACode)
-                    .textFieldStyle(.roundedBorder)
+                TextField(
+                    lang.t(
+                        "6 位双重验证码 (推荐在 iPhone 设置 -> Apple 账户 -> 登录与安全性 -> 双重认证 -> 获取验证码)",
+                        "6桁の確認コード (iPhone 設定 -> Apple Account -> サインインとセキュリティ -> 2ファクタ認証 -> 確認コードを入手)",
+                        "6-Digit 2FA Code (iPhone Settings -> Apple Account -> Sign-In & Security -> Two-Factor Auth -> Get Verification Code)"
+                    ),
+                    text: $vm.login2FACode
+                )
+                .textFieldStyle(.roundedBorder)
 
-                Toggle("在 macOS 系统钥匙串中安全记住该区服密码与 2FA 信任 Cookie（下次顶栏一键切号免输验证码）", isOn: $vm.savePasswordInKeychain)
-                    .font(.system(size: 12))
+                Toggle(
+                    lang.t(
+                        "在 macOS 系统钥匙串中安全记住该区服密码与 2FA 信任 Cookie（下次顶栏一键切号免输验证码）",
+                        "macOS キーチェーンにパスワードと 2FA Cookie を安全に保存（ワンクリック切替を有効化）",
+                        "Save password in macOS Keychain & snapshot 2FA trust cookies for 1-click switching"
+                    ),
+                    isOn: $vm.savePasswordInKeychain
+                )
+                .font(.system(size: 12))
             }
             .padding(14)
             .liquidGlassCard(cornerRadius: 16, tintColor: vm.editingRegion.accentColor, tintOpacity: 0.08)
 
             HStack {
                 if vm.activeAccount.isLoggedIn {
-                    Button("注销当前在线会话") {
+                    Button(lang.t("注销当前在线会话", "現在のセッションをログアウト", "Sign Out Active Session")) {
                         Task { await vm.revokeAccount() }
                     }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: false, tint: .red))
@@ -2601,8 +2965,12 @@ struct ThreeCountryAccountSheet: View {
                         if vm.isLoggingIn {
                             ProgressView().controlSize(.small)
                         }
-                        Text(vm.isLoggingIn ? "正在认证 \(vm.editingRegion.cuteLabel)..." : "登录并激活 \(vm.editingRegion.cuteLabel) 账号")
-                            .font(.system(size: 13.5, weight: .bold))
+                        Text(
+                            vm.isLoggingIn
+                                ? lang.t("正在认证...", "認証中...", "Authenticating...")
+                                : lang.t("登录并激活 \(vm.editingRegion.cuteLabel(lang))", "\(vm.editingRegion.cuteLabel(lang)) でログイン", "Sign In to \(vm.editingRegion.cuteLabel(lang))")
+                        )
+                        .font(.system(size: 13.5, weight: .bold))
                     }
                 }
                 .buttonStyle(LiquidGlassButtonStyle(prominent: true, tint: sakuraPink))
@@ -2610,7 +2978,7 @@ struct ThreeCountryAccountSheet: View {
             }
         }
         .padding(22)
-        .frame(width: 620)
+        .frame(width: 630)
         .preferredColorScheme(.dark)
     }
 }
@@ -2622,53 +2990,77 @@ struct DelistedDirectExtractorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private let sakuraPink = Color(red: 0.96, green: 0.48, blue: 0.68)
+    private var lang: ResolvedLanguage { vm.lang }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("🔮 单国家已下架 / 隐藏 App 穿透提取器", systemImage: "wand.and.stars")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                Label(
+                    lang.t(
+                        "🔮 单国家已下架 / 隐藏 App 穿透提取器",
+                        "🔮 単一国 配信終了 / 非公開 App 直結抽出ツール",
+                        "🔮 Single-Store Delisted / Unlisted App Extractor"
+                    ),
+                    systemImage: "wand.and.stars"
+                )
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 Spacer()
-                Button("关闭") { dismiss() }
+                Button(lang.t("关闭", "閉じる", "Close")) { dismiss() }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: false))
             }
 
-            Text("当某个应用在当前国家商店已下架（前端搜索不到、商品页不可用）时，Apple 分发 CDN 上依然保留着它的安装包。只需输入它的数字 App ID、历史链接或关键词，即可在单个国家账号下直接穿透提取 `.ipa`。")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
+            Text(
+                lang.t(
+                    "当某个应用在当前国家商店已下架（前端搜索不到）时，Apple 分发 CDN 上依然保留着它的安装包。只需输入它的纯数字 App ID、历史链接或名称，即可在单国账号下直接穿透提取 .ipa。",
+                    "ストアから配信終了になり検索できないアプリでも、Apple CDN 上にはパッケージが残っています。数字の App ID またはリンクを入力して直接 .ipa を抽出できます。",
+                    "When an app is delisted from the storefront, its binary remains on Apple's CDN. Enter its numeric App ID, link, or keyword to extract the .ipa directly."
+                )
+            )
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("目标标识:")
-                        .frame(width: 90, alignment: .leading)
-                    TextField("纯数字 App ID (如 932747118)、App Store 链接或应用名/Bundle ID", text: $vm.extractorInput)
-                        .textFieldStyle(.roundedBorder)
+                    Text(lang.t("目标标识:", "対象 ID:", "Target ID:"))
+                        .frame(width: 95, alignment: .leading)
+                    TextField(
+                        lang.t(
+                            "纯数字 App ID (如 932747118)、链接或应用名",
+                            "数字の App ID (例: 932747118)、リンク、またはアプリ名",
+                            "Numeric App ID (e.g. 932747118), URL, or App Name"
+                        ),
+                        text: $vm.extractorInput
+                    )
+                    .textFieldStyle(.roundedBorder)
                 }
 
                 HStack {
-                    Text("自定义名称:")
-                        .frame(width: 90, alignment: .leading)
-                    TextField("可选，留空自动识别 (如 Shadowrocket)", text: $vm.extractorName)
-                        .textFieldStyle(.roundedBorder)
+                    Text(lang.t("自定义名称:", "表示名:", "Custom Name:"))
+                        .frame(width: 95, alignment: .leading)
+                    TextField(
+                        lang.t("可选，留空自动识别", "任意（空欄で自動判別）", "Optional (auto-detected if empty)"),
+                        text: $vm.extractorName
+                    )
+                    .textFieldStyle(.roundedBorder)
                 }
 
                 HStack {
-                    Text("使用国家账号:")
-                        .frame(width: 90, alignment: .leading)
+                    Text(lang.t("使用国家账号:", "使用アカウント:", "Store Account:"))
+                        .frame(width: 95, alignment: .leading)
                     Picker("", selection: $vm.extractorTargetRegion) {
                         ForEach(StoreRegion.allCases) { reg in
-                            Text("\(reg.cuteLabel) (\(vm.accountSlots[reg]?.email.isEmpty == false ? vm.accountSlots[reg]!.email : "当前会话"))").tag(reg)
+                            Text("\(reg.cuteLabel(lang)) (\(vm.accountSlots[reg]?.email.isEmpty == false ? vm.accountSlots[reg]!.email : lang.t("当前会话", "現在のセッション", "Current")))").tag(reg)
                         }
                     }
                     .labelsHidden()
                 }
 
                 HStack {
-                    Text("下架提取模式:")
-                        .frame(width: 90, alignment: .leading)
+                    Text(lang.t("下架提取模式:", "抽出モード:", "Strategy:"))
+                        .frame(width: 95, alignment: .leading)
                     Picker("", selection: $vm.extractorStrategy) {
                         ForEach(DelistedDownloadStrategy.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                            Text(mode.title(lang)).tag(mode)
                         }
                     }
                     .labelsHidden()
@@ -2684,7 +3076,7 @@ struct DelistedDirectExtractorSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.down.doc.fill")
-                        Text("立即穿透提取 IPA")
+                        Text(lang.t("立即穿透提取 IPA", "IPA を直接抽出", "Extract IPA Now"))
                             .font(.system(size: 13.5, weight: .bold))
                     }
                 }
@@ -2693,56 +3085,78 @@ struct DelistedDirectExtractorSheet: View {
             }
         }
         .padding(22)
-        .frame(width: 560)
+        .frame(width: 570)
         .preferredColorScheme(.dark)
     }
 }
 
-// MARK: - Proxy & Download Directory Settings Sheet
+// MARK: - Proxy, Language & Download Directory Settings Sheet
 
 struct ProxyAndSettingsSheet: View {
     @ObservedObject var vm: RingoDropViewModel
     @Environment(\.dismiss) private var dismiss
 
     private let sakuraPink = Color(red: 0.96, green: 0.48, blue: 0.68)
+    private var lang: ResolvedLanguage { vm.lang }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("网络代理与下载路径配置", systemImage: "network")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                Label(
+                    lang.t("网络代理、语言与下载路径配置", "プロキシ・言語・保存先の設定", "Proxy, Language & Download Settings"),
+                    systemImage: "network"
+                )
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 Spacer()
-                Button("完成") { dismiss() }
+                Button(lang.t("完成", "完了", "Done")) { dismiss() }
                     .buttonStyle(LiquidGlassButtonStyle(prominent: true, tint: sakuraPink))
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("启用 HTTP/HTTPS 代理（同时作用于多国商店搜索与 ipatool FairPlay 签名握手）", isOn: $vm.proxyEnabled)
-                    .font(.system(size: 13, weight: .semibold))
+                HStack {
+                    Text(lang.t("界面语言:", "表示言語:", "Language:"))
+                        .frame(width: 95, alignment: .leading)
+                    Picker("", selection: $vm.languageSetting) {
+                        ForEach(AppLanguageSetting.allCases) { option in
+                            Text(option.menuTitle).tag(option)
+                        }
+                    }
+                    .labelsHidden()
+                }
+
+                Toggle(
+                    lang.t(
+                        "启用 HTTP/HTTPS 代理（同时作用于多国商店搜索与 ipatool FairPlay 签名握手）",
+                        "HTTP/HTTPS プロキシを有効化（ストア検索と ipatool 認証の両方に適用）",
+                        "Enable HTTP/HTTPS Proxy (for both Store catalog search & ipatool handshake)"
+                    ),
+                    isOn: $vm.proxyEnabled
+                )
+                .font(.system(size: 13, weight: .semibold))
 
                 HStack {
-                    Text("代理地址:")
-                        .frame(width: 85, alignment: .leading)
+                    Text(lang.t("代理地址:", "プロキシ URL:", "Proxy URL:"))
+                        .frame(width: 95, alignment: .leading)
                     TextField("http://127.0.0.1:7890", text: $vm.proxyURL)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 13, design: .monospaced))
                 }
 
                 HStack {
-                    Text("ipatool 路径:")
-                        .frame(width: 85, alignment: .leading)
+                    Text(lang.t("ipatool 路径:", "ipatool パス:", "ipatool Path:"))
+                        .frame(width: 95, alignment: .leading)
                     TextField("/opt/homebrew/bin/ipatool", text: $vm.ipatoolPath)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 13, design: .monospaced))
                 }
 
                 HStack {
-                    Text("IPA 保存目录:")
-                        .frame(width: 85, alignment: .leading)
+                    Text(lang.t("IPA 保存目录:", "IPA 保存先:", "Save Folder:"))
+                        .frame(width: 95, alignment: .leading)
                     TextField("~/Desktop", text: $vm.downloadDirectory)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 13, design: .monospaced))
-                    Button("选择...") {
+                    Button(lang.t("选择...", "選択...", "Browse...")) {
                         let panel = NSOpenPanel()
                         panel.canChooseFiles = false
                         panel.canChooseDirectories = true
@@ -2757,7 +3171,7 @@ struct ProxyAndSettingsSheet: View {
             .liquidGlassCard(cornerRadius: 16, tintColor: sakuraPink, tintOpacity: 0.08)
         }
         .padding(22)
-        .frame(width: 540)
+        .frame(width: 560)
         .preferredColorScheme(.dark)
     }
 }
@@ -2801,7 +3215,7 @@ struct RingoDropApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 1080, minHeight: 700)
+                .frame(minWidth: 1120, minHeight: 700)
         }
         .windowStyle(.hiddenTitleBar)
     }
