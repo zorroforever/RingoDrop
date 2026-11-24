@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Swift Package Manager & Xcode
+.build/
+build/
+Packages/
+xcuserdata/
+DerivedData/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+
+# Downloaded IPA packages & local secrets
+*.ipa
+.env*
+cookies*
