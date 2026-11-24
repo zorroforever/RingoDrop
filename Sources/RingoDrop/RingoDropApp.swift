@@ -462,6 +462,10 @@ final class RingoDropViewModel: ObservableObject {
     @Published var loadingVersionsFor: Set<Int64> = []
     @Published var selectedVersionForApp: [Int64: String] = [:]
 
+    // Global Hover Floating Card State (Rendered at root ZStack so it is NEVER occluded by LazyVStack rows)
+    @Published var hoveredApp: StoreAppItem?
+    @Published var hoveredRowFrame: CGRect = .zero
+
     // Purchased pagination state
     @Published var isBrowsingPurchases: Bool = false
     @Published var purchasedCurrentPage: Int = 1
@@ -1794,7 +1798,28 @@ struct ContentView: View {
             .padding(.horizontal, 22)
             .padding(.top, 28)
             .padding(.bottom, 16)
+
+            // Top-Level Floating Hover Detail Card (Outside ScrollView & LazyVStack — Never Occluded)
+            GeometryReader { winGeo in
+                if let hovered = vm.hoveredApp {
+                    let rowRect = vm.hoveredRowFrame
+                    let cardHeight: CGFloat = 118
+                    let showAbove = (rowRect.maxY + cardHeight + 24) > winGeo.size.height
+                    let yPos = showAbove
+                        ? max(16, rowRect.minY - cardHeight - 8)
+                        : min(winGeo.size.height - cardHeight - 16, rowRect.maxY + 6)
+                    let xPos = max(32, min(rowRect.minX + 76, winGeo.size.width - 540))
+
+                    TopLevelHoverDetailCard(app: hovered, lang: lang)
+                        .offset(x: xPos, y: yPos)
+                        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: showAbove ? .bottomLeading : .topLeading)))
+                        .allowsHitTesting(false)
+                }
+            }
+            .zIndex(9999)
+            .allowsHitTesting(false)
         }
+        .coordinateSpace(name: "RingoWindowSpace")
         .preferredColorScheme(.dark)
         .sheet(isPresented: $vm.showAccountSheet) {
             ThreeCountryAccountSheet(vm: vm)
@@ -2370,11 +2395,91 @@ struct ContentView: View {
 
 // MARK: - App Row Card (Liquid Glass)
 
+struct RowFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+struct TopLevelHoverDetailCard: View {
+    let app: StoreAppItem
+    let lang: ResolvedLanguage
+    private let sakuraPink = Color(red: 0.96, green: 0.48, blue: 0.68)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(app.trackName)
+                .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Text("App ID: \(String(app.trackId))")
+                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Color(red: 1.0, green: 0.75, blue: 0.88))
+
+                if !app.bundleId.isEmpty {
+                    Text("Bundle: \(app.bundleId)")
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundColor(.cyan)
+                }
+
+                if !app.formattedSize.isEmpty {
+                    Text("\(lang.t("大小", "サイズ", "Size")): \(app.formattedSize)")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.white.opacity(0.88))
+                }
+            }
+
+            if !app.sellerName.isEmpty {
+                Text("\(lang.t("开发者", "開発元", "Developer")): \(app.sellerName) · \(app.primaryGenreName)")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.white.opacity(0.78))
+            }
+
+            HStack(spacing: 10) {
+                ForEach(StoreRegion.allCases) { reg in
+                    if let info = app.listings[reg] {
+                        Text("\(reg.cuteLabel(lang)): \(info.priceText) (v\(info.version))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(reg.accentColor)
+                    } else if reg == .cn && app.hasCheckedRegions {
+                        Text("\(reg.cuteLabel(lang)): \(lang.t("已下架/未上架", "配信終了", "Delisted"))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minWidth: 440, maxWidth: 640, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(red: 0.05, green: 0.07, blue: 0.16).opacity(0.97))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.85), sakuraPink.opacity(0.75), Color.cyan.opacity(0.65)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.3
+                )
+        )
+        .shadow(color: .black.opacity(0.55), radius: 20, x: 0, y: 10)
+    }
+}
+
 struct AppLiquidGlassRow: View {
     let app: StoreAppItem
     @ObservedObject var vm: RingoDropViewModel
     @State private var showVersionsPopover: Bool = false
     @State private var isHoveringTitle: Bool = false
+    @State private var rowFrameInWindow: CGRect = .zero
 
     private let sakuraPink = Color(red: 0.96, green: 0.48, blue: 0.68)
     private var lang: ResolvedLanguage { vm.lang }
@@ -2515,22 +2620,33 @@ struct AppLiquidGlassRow: View {
                             .lineLimit(1)
                     }
                 }
+                .background(
+                    GeometryReader { rowGeo in
+                        Color.clear
+                            .preference(
+                                key: RowFramePreferenceKey.self,
+                                value: rowGeo.frame(in: .named("RingoWindowSpace"))
+                            )
+                    }
+                )
+                .onPreferenceChange(RowFramePreferenceKey.self) { newRect in
+                    rowFrameInWindow = newRect
+                    if isHoveringTitle && vm.hoveredApp?.trackId == app.trackId {
+                        vm.hoveredRowFrame = newRect
+                    }
+                }
                 .contentShape(Rectangle())
                 .onHover { hovering in
-                    withAnimation(.easeOut(duration: 0.16)) {
+                    withAnimation(.easeOut(duration: 0.14)) {
                         isHoveringTitle = hovering
+                        if hovering {
+                            vm.hoveredRowFrame = rowFrameInWindow
+                            vm.hoveredApp = app
+                        } else if vm.hoveredApp?.trackId == app.trackId {
+                            vm.hoveredApp = nil
+                        }
                     }
                 }
-                .help(hoverSummaryText)
-                .overlay(alignment: .bottomLeading) {
-                    if isHoveringTitle {
-                        hoverDetailFloatingCard
-                            .offset(x: 0, y: 82)
-                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
-                            .allowsHitTesting(false)
-                    }
-                }
-                .zIndex(isHoveringTitle ? 200 : 1)
 
                 Spacer()
 
