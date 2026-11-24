@@ -1,6 +1,6 @@
 //
 //  RingoDropApp.swift
-//  RingoDrop (りんご雫) v1.0.1 — Native macOS SwiftUI Liquid Glass App Store IPA Downloader
+//  RingoDrop (りんご雫) v1.0.2 — Native macOS SwiftUI Liquid Glass App Store IPA Downloader
 //
 //  https://github.com/zorroforever/RingoDrop
 //  License: MIT
@@ -12,7 +12,7 @@ import Foundation
 import Security
 import SwiftUI
 
-let kRingoDropVersion = "v1.0.1"
+let kRingoDropVersion = "v1.0.2"
 
 // MARK: - Multi-Language Support (System Default + Manual Switch: 中文 / 日本語 / English)
 
