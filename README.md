@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./assets/icon.png" width="128" height="128" alt="RingoDrop (りんご雫) App Icon" />
+
 # 🍎💧 RingoDrop（りんご雫 / 林檎雫）
 
 **macOS 原生 SwiftUI Liquid Glass 风格的 App Store `.ipa` 多国联合搜索、三国账号切换与已下架应用提取工具**  
@@ -28,6 +30,20 @@
 > 1. 本项目**仅限用于找回用户本人合法购买/获取过但丢失的 App，以及个人技术学习与研究**，**严禁用于任何其他用途**（包括但不限于商业牟利、非法分发、盗版传播或任何违反当地法律法规及 Apple 媒体服务条款的行为）。  
 > 2. 本工具**不提供**任何破解、绕过或移除 Apple FairPlay DRM 数字版权保护的功能；通过本工具下载的所有 `.ipa` 安装包均保留 Apple 官方签发的、与用户本人 Apple ID 强绑定的 `sinf` 授权签名，仅能在该账号本人授权的设备上安装运行。  
 > 3. 使用者应自行承担使用本工具的一切风险与法律责任，项目作者不对任何因不当使用或滥用本工具而产生的后果承担责任。
+
+---
+
+## 📸 界面预览 | Screenshots
+
+### 1. 主界面 · 三国账号切换 & 国区已下架应用直通车
+> 顶栏支持 **🇨🇳 国区 / 🇯🇵 日区 / 🇺🇸 美区** 三国 Apple ID 一键切换、**中 / 日 / 英** 三语言切换（默认跟随系统）以及内置 HTTP/HTTPS 代理开关。
+
+![RingoDrop Main UI - Delisted & Cross-Region Apps](./assets/screenshot-home.png)
+
+### 2. 多国家并发联合搜索（🇨🇳 国区 + 🇯🇵 日区 + 🇺🇸 美区）
+> 自由勾选 1~3 个国家并发检索，同一张卡片展示各国上架状态、货币价格、最新版本号与包体大小；支持鼠标悬停显示顶层完整信息浮窗、选历史版本降级与一键免费领券下载。
+
+![RingoDrop Multi-Country Search](./assets/screenshot-search.png)
 
 ---
 
@@ -121,10 +137,15 @@ open Package.swift
 ```text
 RingoDrop/
 ├── Package.swift                      # Swift Package Manager 工程定义
+├── assets/
+│   ├── icon.png                       # RingoDrop (りんご雫) Liquid Glass 图标
+│   ├── screenshot-home.png            # 主界面与已下架直通车截图
+│   └── screenshot-search.png          # 多国家联合搜索界面截图
 ├── Sources/
 │   └── RingoDrop/
 │       └── RingoDropApp.swift         # SwiftUI Liquid Glass 主程序与核心控制器
 ├── scripts/
+│   ├── generate_icon.swift            # 1024x1024 Retina .icns 图标生成脚本
 │   └── build_app.sh                   # 一键编译打包 macOS .app Bundle 脚本
 ├── LICENSE                            # MIT 开源许可证
 └── README.md                          # 项目说明文档
