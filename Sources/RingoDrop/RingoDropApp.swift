@@ -2037,9 +2037,10 @@ struct ContentView: View {
                 }
                 .buttonStyle(LiquidGlassButtonStyle(prominent: false))
 
-                Text("当前激活区服: \(vm.activeRegionTag.cuteLabel) (\(vm.activeAccount.isLoggedIn ? vm.activeAccount.email : "未登录"))")
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundColor(.white.opacity(0.75))
+                Text("当前激活区服: \(vm.activeRegionTag.cuteLabel) (\(vm.activeAccount.isLoggedIn ? vm.activeAccount.email : "未登录"))  ·  ⚠️ 免责声明：仅限找回本人已购丢失 App 及个人研究，严禁用于其他任何用途")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.72))
+                    .lineLimit(1)
 
                 Spacer()
 
